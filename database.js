@@ -18,16 +18,16 @@ const db = new sqlite3.Database(dbPath, (err) => {
 
 function createTables() {
     db.serialize(() => {
+        // 既有的 users 表
         db.run(`CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
             is_admin INTEGER DEFAULT 0,
-            max_storage_bytes INTEGER DEFAULT 1073741824 -- 默认 1GB
+            max_storage_bytes INTEGER DEFAULT 1073741824
         )`, (err) => {
-            if (err) { /* console.error("建立 'users' 表失败:", err.message); */ return; }
+            if (err) { return; }
             
-            // 检查并添加 max_storage_bytes 字段 (针对旧数据库)
             db.all("PRAGMA table_info(users)", (pragmaErr, columns) => {
                 if (!pragmaErr && !columns.some(col => col.name === 'max_storage_bytes')) {
                     db.run("ALTER TABLE users ADD COLUMN max_storage_bytes INTEGER DEFAULT 1073741824");
@@ -36,6 +36,12 @@ function createTables() {
 
             createDependentTables();
         });
+
+        // --- 新增：系统配置 KV 表 ---
+        db.run(`CREATE TABLE IF NOT EXISTS system_config (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )`);
     });
 }
 
@@ -56,7 +62,7 @@ function createDependentTables() {
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
             UNIQUE(name, parent_id, user_id)
         )`, (err) => {
-            if (err) { /* console.error("建立 'folders' 表失败:", err.message); */ return; }
+            if (err) { return; }
 
             db.all("PRAGMA table_info(folders)", (pragmaErr, columns) => {
                 if (pragmaErr) return;
@@ -64,7 +70,6 @@ function createDependentTables() {
                 if (!columns.some(col => col.name === 'share_password')) {
                     db.run("ALTER TABLE folders ADD COLUMN share_password TEXT");
                 }
-                // 新增回收站字段
                 if (!columns.some(col => col.name === 'is_deleted')) {
                     db.run("ALTER TABLE folders ADD COLUMN is_deleted INTEGER DEFAULT 0");
                     db.run("ALTER TABLE folders ADD COLUMN deleted_at INTEGER");
@@ -97,7 +102,7 @@ function createFilesTable() {
             FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )`, (err) => {
-            if (err) { /* console.error("建立 'files' 表失敗:", err.message); */ return; }
+            if (err) { return; }
 
             db.all("PRAGMA table_info(files)", (pragmaErr, columns) => {
                 if (pragmaErr) return;
@@ -105,7 +110,6 @@ function createFilesTable() {
                 if (!columns.some(col => col.name === 'share_password')) {
                     db.run("ALTER TABLE files ADD COLUMN share_password TEXT");
                 }
-                // 新增回收站字段
                 if (!columns.some(col => col.name === 'is_deleted')) {
                     db.run("ALTER TABLE files ADD COLUMN is_deleted INTEGER DEFAULT 0");
                     db.run("ALTER TABLE files ADD COLUMN deleted_at INTEGER");
@@ -124,7 +128,7 @@ function createAuthTokenTable() {
         expires_at INTEGER NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
     )`, (err) => {
-        if (err) { /* console.error("建立 'auth_tokens' 表失败:", err.message); */ return; }
+        if (err) { return; }
         checkAndCreateAdmin();
     });
 }
@@ -152,5 +156,35 @@ function checkAndCreateAdmin() {
         }
     });
 }
+
+// --- KV 存储相关方法 ---
+
+function getConfig() {
+    return new Promise((resolve) => {
+        db.get("SELECT value FROM system_config WHERE key = 'main'", (err, row) => {
+            if (err || !row) resolve(null);
+            else {
+                try {
+                    resolve(JSON.parse(row.value));
+                } catch (e) {
+                    resolve(null);
+                }
+            }
+        });
+    });
+}
+
+function saveConfig(config) {
+    return new Promise((resolve, reject) => {
+        db.run("INSERT OR REPLACE INTO system_config (key, value) VALUES ('main', ?)", [JSON.stringify(config)], (err) => {
+            if (err) reject(err);
+            else resolve(true);
+        });
+    });
+}
+
+// 导出 db 对象以及新添加的方法
+db.getConfig = getConfig;
+db.saveConfig = saveConfig;
 
 module.exports = db;
