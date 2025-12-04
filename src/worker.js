@@ -1,7 +1,4 @@
-{
-type: "file_content_update",
-fileName: "limkon/networkfilemanger/NetworkFileManger-ff9f914d786efd7cd80c55485f0fe871f93b3f13/src/worker.js",
-fullContent: `import { Hono } from 'hono';
+import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import Database from './database.js';
 import ConfigManager from './config.js';
@@ -14,7 +11,7 @@ const app = new Hono();
 // =================================================================================
 // 0. 靜態 HTML Shell (用於渲染分享頁面)
 // =================================================================================
-const SHARE_HTML = \`
+const SHARE_HTML = `
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -120,7 +117,7 @@ const SHARE_HTML = \`
     </script>
 </body>
 </html>
-\`;
+`;
 
 // =================================================================================
 // 1. 全局中间件：注入 DB, Config, Storage, Crypto
@@ -231,7 +228,7 @@ app.get('/setup', async (c) => {
         }
         return c.text("✅ 数据库结构已就绪");
     } catch (e) {
-        return c.text(\`❌ 初始化失败: \${e.message}\`, 500);
+        return c.text(`❌ 初始化失败: ${e.message}`, 500);
     }
 });
 
@@ -325,7 +322,7 @@ app.get('/api/public/share/:token', async (c) => {
     }
 
     const isLocked = !!item.share_password;
-    const unlockCookie = getCookie(c, \`share_unlock_\${token}\`);
+    const unlockCookie = getCookie(c, `share_unlock_${token}`);
     const isUnlocked = unlockCookie === 'true';
 
     if (isLocked && !isUnlocked) {
@@ -348,7 +345,7 @@ app.get('/api/public/share/:token', async (c) => {
             size: item.size,
             date: item.date,
             mimeType: item.mimetype,
-            downloadUrl: \`/share/download/\${token}\`
+            downloadUrl: `/share/download/${token}`
         });
     } else {
         const contents = await data.getFolderContents(db, item.id, item.user_id);
@@ -379,7 +376,7 @@ app.post('/api/public/share/:token/auth', async (c) => {
 
     const bcrypt = await import('bcryptjs');
     if (item.share_password && bcrypt.compareSync(password, item.share_password)) {
-        setCookie(c, \`share_unlock_\${token}\`, 'true', { path: '/', maxAge: 86400, httpOnly: true, secure: true });
+        setCookie(c, `share_unlock_${token}`, 'true', { path: '/', maxAge: 86400, httpOnly: true, secure: true });
         return c.json({ success: true });
     }
     
@@ -395,14 +392,14 @@ app.get('/share/download/:token', async (c) => {
     if (!file) return c.text('File not found', 404);
     
     if (file.share_password) {
-         const unlockCookie = getCookie(c, \`share_unlock_\${token}\`);
+         const unlockCookie = getCookie(c, `share_unlock_${token}`);
          if (unlockCookie !== 'true') return c.text('Password required', 403);
     }
     
     try {
         const { stream, contentType, headers } = await storage.download(file.file_id, file.user_id);
         const responseHeaders = new Headers(headers);
-        responseHeaders.set('Content-Disposition', \`attachment; filename*=UTF-8''\${encodeURIComponent(file.fileName)}\`);
+        responseHeaders.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
         responseHeaders.set('Content-Type', file.mimetype || contentType || 'application/octet-stream');
         return new Response(stream, { headers: responseHeaders });
     } catch (e) {
@@ -428,7 +425,7 @@ app.get('/', async (c) => {
     }
     
     // 将 ID 加密后重定向
-    return c.redirect(\`/view/\${encrypt(root.id)}\`);
+    return c.redirect(`/view/${encrypt(root.id)}`);
 });
 
 // 获取文件夹内容
@@ -552,19 +549,19 @@ app.get('/download/proxy/:messageId', async (c) => {
     try {
         const { stream, contentType, headers } = await storage.download(fileInfo.file_id, user.id);
         const responseHeaders = new Headers(headers);
-        responseHeaders.set('Content-Disposition', \`attachment; filename*=UTF-8''\${encodeURIComponent(fileInfo.fileName)}\`);
+        responseHeaders.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileInfo.fileName)}`);
         responseHeaders.set('Content-Type', fileInfo.mimetype || contentType || 'application/octet-stream');
         
         return new Response(stream, {
             headers: responseHeaders
         });
     } catch (e) {
-        return c.text(\`Download failed: \${e.message}\`, 500);
+        return c.text(`Download failed: ${e.message}`, 500);
     }
 });
 
 // =================================================================================
-// 6. 扩展业务 API (配额、创建、删除、重命名、搜索、编辑保存、移动、分享、加密)
+// 6. 扩展业务 API (配额、创建、删除、重命名、搜索、编辑保存、移动、分享、加密、回收站)
 // =================================================================================
 
 // 获取用户配额
@@ -598,21 +595,66 @@ app.post('/api/folder/create', async (c) => {
     }
 });
 
-// 删除项目 (文件或文件夹)
+// 删除项目 (支持回收站)
 app.post('/api/delete', async (c) => {
     const db = c.get('db');
     const storage = c.get('storage');
     const user = c.get('user');
-    const { files, folders } = await c.req.json();
+    const { files, folders, permanent } = await c.req.json();
     
+    const fileIds = (files || []).map(id => BigInt(id));
+    const folderIds = (folders || []).map(id => parseInt(id));
+
     try {
-        await data.unifiedDelete(db, storage, null, null, user.id, files, folders);
+        if (permanent) {
+             // 永久删除 (彻底从 DB 和存储中移除)
+             await data.unifiedDelete(db, storage, null, null, user.id, fileIds, folderIds);
+        } else {
+             // 软删除 (移入回收站)
+             await data.softDeleteItems(db, fileIds, folderIds, user.id);
+        }
         return c.json({ success: true });
     } catch (e) {
         console.error(e);
         return c.json({ success: false, message: '删除失败: ' + e.message }, 500);
     }
 });
+
+// 回收站列表
+app.get('/api/trash', async (c) => {
+    const db = c.get('db');
+    const user = c.get('user');
+    try {
+        const res = await data.getTrashContents(db, user.id);
+        return c.json(res);
+    } catch (e) {
+        return c.json({ success: false, message: e.message }, 500);
+    }
+});
+
+// 还原
+app.post('/api/trash/restore', async (c) => {
+    const db = c.get('db');
+    const user = c.get('user');
+    const { files, folders } = await c.req.json();
+    
+    const fileIds = (files || []).map(id => BigInt(id));
+    const folderIds = (folders || []).map(id => parseInt(id));
+    
+    await data.restoreItems(db, fileIds, folderIds, user.id);
+    return c.json({ success: true });
+});
+
+// 清空回收站
+app.post('/api/trash/empty', async (c) => {
+    const db = c.get('db');
+    const storage = c.get('storage');
+    const user = c.get('user');
+    
+    await data.emptyTrash(db, storage, user.id);
+    return c.json({ success: true });
+});
+
 
 // 重命名
 app.post('/api/rename', async (c) => {
@@ -648,15 +690,10 @@ app.post('/api/move', async (c) => {
     if (!targetFolderId) return c.json({ success: false, message: '目标文件夹无效' }, 400);
 
     try {
-        // 批量移动
         const fileIds = (files || []).map(id => BigInt(id));
         const folderIds = (folders || []).map(id => parseInt(id));
 
-        // 调用 data.js 中的 moveItems (注意：不是 moveItem，moveItems 支持批量且无冲突检测逻辑，
-        // 如果需要冲突检测，需要前端配合或使用更复杂的 moveItem 循环)
-        // 这里为了简化和效率，使用批量移动基础逻辑。data.js 的 moveItems 会处理物理移动和 DB 更新。
         await data.moveItems(db, storage, fileIds, folderIds, targetFolderId, user.id);
-
         return c.json({ success: true });
     } catch (e) {
         console.error(e);
@@ -735,7 +772,7 @@ app.post('/api/share/create', async (c) => {
     try {
         const result = await data.createShareLink(db, itemId, itemType, expiresIn, user.id, password, customExpiresAt);
         if (result.success) {
-             return c.json({ success: true, token: result.token, link: \`/share/view/\${itemType}/\${result.token}\` });
+             return c.json({ success: true, token: result.token, link: `/share/view/${itemType}/${result.token}` });
         } else {
              return c.json({ success: false, message: result.message }, 500);
         }
@@ -898,20 +935,23 @@ app.post('/api/admin/set-quota', adminMiddleware, async (c) => {
     return c.json({ success: true });
 });
 
-// 管理员扫描 (Mock实现，因Worker超时限制)
+// 管理员扫描
 app.post('/api/admin/scan', adminMiddleware, async (c) => {
-    const { userId, storageType } = await c.req.json();
+    const db = c.get('db');
+    const storage = c.get('storage');
+    const { userId } = await c.req.json();
+
+    // 使用 ReadableStream 返回实时日志
     const stream = new ReadableStream({
-        start(controller) {
-            controller.enqueue(new TextEncoder().encode(\`正在初始化 \${storageType} 扫描 (User ID: \${userId})...\n\`));
-            setTimeout(() => {
-                controller.enqueue(new TextEncoder().encode("错误: Cloudflare Workers 环境下的全量扫描功能暂未完全实现。\n"));
-                controller.enqueue(new TextEncoder().encode("提示: 请确保数据库与存储桶保持同步。\n"));
-                controller.close();
-            }, 1000);
+        async start(controller) {
+            await data.scanStorageAndImport(db, storage, userId, controller);
+            controller.close();
         }
     });
-    return new Response(stream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+
+    return new Response(stream, {
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    });
 });
 
 // =================================================================================
@@ -920,5 +960,4 @@ app.post('/api/admin/scan', adminMiddleware, async (c) => {
 app.get('/login', (c) => c.html('<html><body><h1>Please host the frontend static files (public/login.html)</h1></body></html>'));
 app.get('/view/*', (c) => c.html('<html><body><h1>Manager App Loading... (Host public/manager.html)</h1></body></html>'));
 
-export default app;`
-}
+export default app;
