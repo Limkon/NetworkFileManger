@@ -31,7 +31,7 @@ const SHARE_HTML = `
 </head>
 <body>
     <div class="container" id="app">
-        <h2 style="text-align:center;">正在加載...</h2>
+        <h2 style="text-align:center;">正在加载...</h2>
     </div>
     <script>
         const pathParts = window.location.pathname.split('/');
@@ -43,7 +43,7 @@ const SHARE_HTML = `
                 const res = await fetch('/api/public/share/' + token);
                 const data = await res.json();
                 
-                if (!res.ok) throw new Error(data.message || '加載失敗');
+                if (!res.ok) throw new Error(data.message || '加载失败');
 
                 if (data.isLocked && !data.isUnlocked) {
                     renderPasswordForm(data.name);
@@ -53,7 +53,7 @@ const SHARE_HTML = `
                     renderFolder(data);
                 }
             } catch (e) {
-                app.innerHTML = '<div style="text-align:center;color:red;"><h3>錯誤</h3><p>' + e.message + '</p></div>';
+                app.innerHTML = '<div style="text-align:center;color:red;"><h3>错误</h3><p>' + e.message + '</p></div>';
             }
         }
 
@@ -61,10 +61,10 @@ const SHARE_HTML = `
             app.innerHTML = \`
                 <div class="locked-screen">
                     <i class="fas fa-lock file-icon"></i>
-                    <h3>\${name} 受密碼保護</h3>
+                    <h3>\${name} 受密码保护</h3>
                     <div style="margin:20px 0;">
-                        <input type="password" id="pass" placeholder="請輸入密碼" style="padding:10px; width:200px;">
-                        <button class="btn" onclick="submitPass()">解鎖</button>
+                        <input type="password" id="pass" placeholder="请输入密码" style="padding:10px; width:200px;">
+                        <button class="btn" onclick="submitPass()">解锁</button>
                     </div>
                     <p id="err" class="error-msg"></p>
                 </div>
@@ -89,16 +89,16 @@ const SHARE_HTML = `
                     <i class="fas fa-file file-icon"></i>
                     <h2>\${data.name}</h2>
                     <p>大小: \${(data.size/1024/1024).toFixed(2)} MB</p>
-                    <p>時間: \${new Date(data.date).toLocaleString()}</p>
+                    <p>时间: \${new Date(data.date).toLocaleString()}</p>
                     <div style="margin-top:30px;">
-                        <a href="\${data.downloadUrl}" class="btn"><i class="fas fa-download"></i> 下載文件</a>
+                        <a href="\${data.downloadUrl}" class="btn"><i class="fas fa-download"></i> 下载文件</a>
                     </div>
                 </div>
             \`;
         }
 
         function renderFolder(data) {
-            let html = \`<h3>\${data.name} (資料夾)</h3><div class="list">\`;
+            let html = \`<h3>\${data.name} (文件夹)</h3><div class="list">\`;
             if(data.folders) {
                 data.folders.forEach(f => {
                     html += \`<div class="list-item"><i class="fas fa-folder" style="color:#fbc02d;"></i> <span>\${f.name}</span></div>\`;
@@ -120,10 +120,10 @@ const SHARE_HTML = `
 `;
 
 // =================================================================================
-// 1. 全局中間件：注入 DB, Config, Storage, Crypto
+// 1. 全局中间件：注入 DB, Config, Storage, Crypto
 // =================================================================================
 app.use('*', async (c, next) => {
-    // 0. 初始化環境變數中的加密密鑰
+    // 0. 初始化环境变量中的加密密钥
     initCrypto(c.env.SESSION_SECRET);
 
     // 1. 初始化 DB
@@ -134,11 +134,11 @@ app.use('*', async (c, next) => {
     const configManager = new ConfigManager(c.env.CONFIG_KV);
     c.set('configManager', configManager);
 
-    // 3. 預加載配置
+    // 3. 预加载配置
     const config = await configManager.load();
     c.set('config', config);
 
-    // 4. 初始化存儲後端 (將 c.env 傳入以獲取 BOT_TOKEN 等環境變數)
+    // 4. 初始化存储后端 (将 c.env 传入以获取 BOT_TOKEN 等环境变量)
     const storage = initStorage(config, c.env); 
     c.set('storage', storage);
 
@@ -146,18 +146,18 @@ app.use('*', async (c, next) => {
 });
 
 // =================================================================================
-// 2. 認證中間件
+// 2. 认证中间件
 // =================================================================================
 const authMiddleware = async (c, next) => {
-    // 排除公開路由
+    // 排除公开路由
     const publicPaths = [
         '/login', 
         '/register', 
         '/setup', 
-        '/api/public', // 分享相關 API
-        '/share/view', // 分享頁面
-        '/share/download', // 分享下載
-        '/assets',     // 靜態資源路徑 (如果需要)
+        '/api/public', // 分享相关 API
+        '/share/view', // 分享页面
+        '/share/download', // 分享下载
+        '/assets',     // 静态资源路径
         '/favicon.ico'
     ];
     
@@ -168,7 +168,7 @@ const authMiddleware = async (c, next) => {
     const token = getCookie(c, 'remember_me');
     if (!token) {
         if (c.req.path.startsWith('/api') || c.req.header('accept')?.includes('json')) {
-            return c.json({ success: false, message: '未登入' }, 401);
+            return c.json({ success: false, message: '未登录' }, 401);
         }
         return c.redirect('/login');
     }
@@ -180,7 +180,7 @@ const authMiddleware = async (c, next) => {
         if (tokenData) await data.deleteAuthToken(db, token);
         deleteCookie(c, 'remember_me');
         if (c.req.path.startsWith('/api') || c.req.header('accept')?.includes('json')) {
-            return c.json({ success: false, message: '會話已過期' }, 401);
+            return c.json({ success: false, message: '会话已过期' }, 401);
         }
         return c.redirect('/login');
     }
@@ -197,7 +197,7 @@ const authMiddleware = async (c, next) => {
 const adminMiddleware = async (c, next) => {
     const user = c.get('user');
     if (!user || !user.isAdmin) {
-        return c.json({ success: false, message: '權限不足' }, 403);
+        return c.json({ success: false, message: '权限不足' }, 403);
     }
     await next();
 };
@@ -205,10 +205,10 @@ const adminMiddleware = async (c, next) => {
 app.use('*', authMiddleware);
 
 // =================================================================================
-// 3. 核心路由：系統初始化與認證
+// 3. 核心路由：系统初始化与认证
 // =================================================================================
 
-// 系統初始化
+// 系统初始化
 app.get('/setup', async (c) => {
     const db = c.get('db');
     try {
@@ -224,14 +224,15 @@ app.get('/setup', async (c) => {
             await db.run("UPDATE users SET is_admin = 1 WHERE id = ?", [newUser.id]);
             await data.createFolder(db, '/', null, newUser.id);
             
-            return c.text("✅ 初始化成功: 預設管理員 admin / admin");
+            return c.text("✅ 初始化成功: 预设管理员 admin / admin");
         }
-        return c.text("✅ 資料庫結構已就緒");
+        return c.text("✅ 数据库结构已就绪");
     } catch (e) {
-        return c.text(`❌ 初始化失敗: ${e.message}`, 500);
+        return c.text(`❌ 初始化失败: ${e.message}`, 500);
     }
 });
 
+// 登录
 app.post('/login', async (c) => {
     const { username, password } = await c.req.parseBody();
     const db = c.get('db');
@@ -257,10 +258,39 @@ app.post('/login', async (c) => {
         
         return c.redirect('/');
     } else {
-        return c.text('帳號或密碼錯誤', 401);
+        return c.text('账号或密码错误', 401);
     }
 });
 
+// 注册
+app.post('/register', async (c) => {
+    const { username, password } = await c.req.parseBody();
+    if (!username || !password) {
+        return c.text('用户名和密码不能为空', 400);
+    }
+    
+    const db = c.get('db');
+    
+    const existing = await data.findUserByName(db, username);
+    if (existing) {
+        return c.text('用户名已存在', 400);
+    }
+    
+    const bcrypt = await import('bcryptjs');
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(password, salt);
+    
+    try {
+        const newUser = await data.createUser(db, username, hash);
+        await data.createFolder(db, '/', null, newUser.id);
+        
+        return c.redirect('/login?registered=true');
+    } catch (e) {
+        return c.text('注册失败: ' + e.message, 500);
+    }
+});
+
+// 登出
 app.get('/logout', async (c) => {
     const token = getCookie(c, 'remember_me');
     if (token) {
@@ -272,7 +302,7 @@ app.get('/logout', async (c) => {
 });
 
 // =================================================================================
-// 4. 分享功能路由 (公開 API)
+// 4. 分享功能路由 (公开 API)
 // =================================================================================
 
 app.get('/api/public/share/:token', async (c) => {
@@ -288,7 +318,7 @@ app.get('/api/public/share/:token', async (c) => {
     }
 
     if (!item) {
-        return c.json({ success: false, message: '分享連結無效或已過期' }, 404);
+        return c.json({ success: false, message: '分享链接无效或已过期' }, 404);
     }
 
     const isLocked = !!item.share_password;
@@ -342,7 +372,7 @@ app.post('/api/public/share/:token/auth', async (c) => {
     let item = await data.getFileByShareToken(db, token);
     if (!item) item = await data.getFolderByShareToken(db, token);
     
-    if (!item) return c.json({ success: false, message: '無效連結' }, 404);
+    if (!item) return c.json({ success: false, message: '无效链接' }, 404);
 
     const bcrypt = await import('bcryptjs');
     if (item.share_password && bcrypt.compareSync(password, item.share_password)) {
@@ -350,7 +380,7 @@ app.post('/api/public/share/:token/auth', async (c) => {
         return c.json({ success: true });
     }
     
-    return c.json({ success: false, message: '密碼錯誤' }, 401);
+    return c.json({ success: false, message: '密码错误' }, 401);
 });
 
 app.get('/share/download/:token', async (c) => {
@@ -381,7 +411,7 @@ app.get('/share/view/:type/:token', (c) => c.html(SHARE_HTML));
 
 
 // =================================================================================
-// 5. 核心業務路由
+// 5. 核心业务路由
 // =================================================================================
 
 app.get('/', async (c) => {
@@ -394,18 +424,18 @@ app.get('/', async (c) => {
         root = { id: res.id };
     }
     
-    // 將 ID 加密後重定向
+    // 将 ID 加密后重定向
     return c.redirect(`/view/${encrypt(root.id)}`);
 });
 
-// 獲取文件夾內容
+// 获取文件夹内容
 app.get('/api/folder/:encryptedId', async (c) => {
     const db = c.get('db');
     const user = c.get('user');
     const encId = c.req.param('encryptedId');
     
     const folderIdStr = decrypt(encId);
-    if (!folderIdStr) return c.json({ success: false, message: '無效 ID' }, 400);
+    if (!folderIdStr) return c.json({ success: false, message: '无效 ID' }, 400);
     
     const folderId = parseInt(folderIdStr);
     
@@ -422,29 +452,21 @@ app.get('/api/folder/:encryptedId', async (c) => {
     }
 });
 
-// 文件上傳
+// 文件上传
 app.post('/upload', async (c) => {
     const db = c.get('db');
     const storage = c.get('storage');
     const user = c.get('user');
     const config = c.get('config');
 
-    // 解析 FormData
-    // 注意：Cloudflare Workers 的 request.parseBody() 可以處理 multipart/form-data
-    // 但在處理文件流時，直接使用 parseBody 會將文件緩存到內存。
-    // 對於大文件上傳，建議使用 Stream 方式，但 Hono 的 parseBody 比較方便。
-    // 如果需要極致的流式上傳，需要直接處理 c.req.raw.body
-    
     const body = await c.req.parseBody(); 
     
-    // 獲取並解密 folderId
     const encFolderId = c.req.query('folderId');
     const folderIdStr = decrypt(encFolderId);
     const folderId = parseInt(folderIdStr);
 
-    if (isNaN(folderId)) return c.json({ success: false, message: '缺少或無效的 folderId' }, 400);
+    if (isNaN(folderId)) return c.json({ success: false, message: '缺少或无效的 folderId' }, 400);
 
-    // 提取文件列表
     const files = [];
     Object.keys(body).forEach(key => {
         const value = body[key];
@@ -457,12 +479,11 @@ app.post('/upload', async (c) => {
         }
     });
 
-    if (files.length === 0) return c.json({ success: false, message: '沒有檢測到文件' }, 400);
+    if (files.length === 0) return c.json({ success: false, message: '没有检测到文件' }, 400);
 
-    // 檢查配額
     const totalSize = files.reduce((acc, f) => acc + f.size, 0);
     if (!await data.checkQuota(db, user.id, totalSize)) {
-        return c.json({ success: false, message: '空間不足' }, 413);
+        return c.json({ success: false, message: '空间不足' }, 413);
     }
 
     const results = [];
@@ -471,11 +492,8 @@ app.post('/upload', async (c) => {
         try {
             const messageId = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000));
             
-            // 上傳到存儲後端
-            // 注意：這裡 file 是 File 對象，繼承自 Blob，可以直接傳給 storage.upload
-            // storage.upload 內部會處理流式上傳
             const uploadResult = await storage.upload(
-                file, // Hono 解析的 File 對象
+                file, 
                 file.name, 
                 file.type, 
                 user.id, 
@@ -483,7 +501,6 @@ app.post('/upload', async (c) => {
                 config
             );
 
-            // 寫入數據庫
             await data.addFile(db, {
                 message_id: messageId,
                 fileName: file.name,
@@ -505,7 +522,7 @@ app.post('/upload', async (c) => {
     return c.json({ success: true, results });
 });
 
-// 文件下載代理
+// 文件下载代理
 app.get('/download/proxy/:messageId', async (c) => {
     const db = c.get('db');
     const storage = c.get('storage');
@@ -532,10 +549,10 @@ app.get('/download/proxy/:messageId', async (c) => {
 });
 
 // =================================================================================
-// 6. 新增業務 API (配額、創建、刪除、重命名、搜索)
+// 6. 扩展业务 API (配额、创建、删除、重命名、搜索、编辑保存)
 // =================================================================================
 
-// 獲取用戶配額
+// 获取用户配额
 app.get('/api/user/quota', async (c) => {
     const db = c.get('db');
     const user = c.get('user');
@@ -547,7 +564,7 @@ app.get('/api/user/quota', async (c) => {
     }
 });
 
-// 創建文件夾
+// 创建文件夹
 app.post('/api/folder/create', async (c) => {
     const db = c.get('db');
     const user = c.get('user');
@@ -556,7 +573,7 @@ app.post('/api/folder/create', async (c) => {
     const parentIdStr = decrypt(encryptedParentId);
     let parentId = parentIdStr ? parseInt(parentIdStr) : null;
     
-    if (!name) return c.json({ success: false, message: '名稱不能為空' }, 400);
+    if (!name) return c.json({ success: false, message: '名称不能为空' }, 400);
 
     try {
         await data.createFolder(db, name, parentId, user.id);
@@ -566,7 +583,7 @@ app.post('/api/folder/create', async (c) => {
     }
 });
 
-// 刪除項目 (文件或文件夾)
+// 删除项目 (文件或文件夹)
 app.post('/api/delete', async (c) => {
     const db = c.get('db');
     const storage = c.get('storage');
@@ -578,7 +595,7 @@ app.post('/api/delete', async (c) => {
         return c.json({ success: true });
     } catch (e) {
         console.error(e);
-        return c.json({ success: false, message: '刪除失敗: ' + e.message }, 500);
+        return c.json({ success: false, message: '删除失败: ' + e.message }, 500);
     }
 });
 
@@ -589,14 +606,12 @@ app.post('/api/rename', async (c) => {
     const user = c.get('user');
     const { type, id, name } = await c.req.json();
     
-    if (!name) return c.json({ success: false, message: '名稱不能為空' }, 400);
+    if (!name) return c.json({ success: false, message: '名称不能为空' }, 400);
 
     try {
         if (type === 'file') {
-             // id 是 message_id (BigInt)
              await data.renameFile(db, storage, BigInt(id), name, user.id);
         } else {
-             // id 是 folderId (Int)
              await data.renameFolder(db, storage, parseInt(id), name, user.id);
         }
         return c.json({ success: true });
@@ -617,9 +632,65 @@ app.get('/api/search', async (c) => {
     return c.json(result);
 });
 
+// 编辑器保存文件内容
+app.post('/api/file/save', async (c) => {
+    const db = c.get('db');
+    const storage = c.get('storage');
+    const user = c.get('user');
+    const config = c.get('config');
+    const { id, content } = await c.req.json();
+    
+    if (!id || content === undefined) return c.json({ success: false, message: '缺少参数' }, 400);
+
+    const files = await data.getFilesByIds(db, [BigInt(id)], user.id);
+    const fileInfo = files[0];
+    if (!fileInfo) return c.json({ success: false, message: '文件不存在' }, 404);
+
+    try {
+        const blob = new Blob([content], { type: 'text/plain' });
+        const fileObj = new File([blob], fileInfo.fileName, { type: 'text/plain' });
+
+        const uploadResult = await storage.upload(
+            fileObj,
+            fileInfo.fileName,
+            'text/plain',
+            user.id,
+            fileInfo.folder_id,
+            config
+        );
+
+        await data.updateFile(db, BigInt(id), {
+            file_id: uploadResult.fileId,
+            size: fileObj.size,
+            date: Date.now()
+        }, user.id);
+
+        return c.json({ success: true });
+    } catch (e) {
+        return c.json({ success: false, message: '保存失败: ' + e.message }, 500);
+    }
+});
+
+// 获取分享列表
+app.get('/api/shares', async (c) => {
+    const db = c.get('db');
+    const user = c.get('user');
+    const shares = await data.getActiveShares(db, user.id);
+    return c.json(shares);
+});
+
+// 取消分享
+app.post('/api/share/cancel', async (c) => {
+    const db = c.get('db');
+    const user = c.get('user');
+    const { itemId, itemType } = await c.req.json();
+    await data.cancelShare(db, itemId, itemType, user.id);
+    return c.json({ success: true });
+});
+
 
 // =================================================================================
-// 7. 管理員路由
+// 7. 管理员路由
 // =================================================================================
 
 app.get('/api/admin/users', adminMiddleware, async (c) => {
@@ -639,7 +710,7 @@ app.post('/api/admin/storage-mode', adminMiddleware, async (c) => {
     const { mode } = await c.req.json();
     
     if (!['telegram', 'webdav', 's3', 'local'].includes(mode)) {
-        return c.json({ success: false, message: '無效模式' }, 400);
+        return c.json({ success: false, message: '无效模式' }, 400);
     }
     
     await configManager.save({ storageMode: mode });
@@ -650,8 +721,6 @@ app.post('/api/admin/storage-mode', adminMiddleware, async (c) => {
 app.get('/api/admin/webdav', adminMiddleware, async (c) => {
     const configManager = c.get('configManager');
     const config = await configManager.load();
-    // 為了安全，不返回密碼，或者這裏簡單處理只返回配置對象數組（目前系統設計是單一 WebDAV 配置）
-    // 但原代碼前端支持多個，這裡為了兼容，將單個配置包裝成數組
     const wd = config.webdav || {};
     return c.json(wd.url ? [{ id: 1, ...wd }] : []);
 });
@@ -663,7 +732,7 @@ app.post('/api/admin/webdav', adminMiddleware, async (c) => {
     
     const newWebdav = { url, username };
     if (password) newWebdav.password = password;
-    else if (config.webdav) newWebdav.password = config.webdav.password; // 保留舊密碼
+    else if (config.webdav) newWebdav.password = config.webdav.password;
 
     await configManager.save({ webdav: newWebdav });
     return c.json({ success: true });
@@ -680,7 +749,7 @@ app.get('/api/admin/s3', adminMiddleware, async (c) => {
     const configManager = c.get('configManager');
     const config = await configManager.load();
     const s3 = { ...config.s3 };
-    delete s3.secretAccessKey; // 不返回私鑰
+    delete s3.secretAccessKey;
     return c.json({ s3 });
 });
 
@@ -690,7 +759,6 @@ app.post('/api/admin/s3', adminMiddleware, async (c) => {
     const config = await configManager.load();
     
     const s3 = { ...config.s3, ...newConfig };
-    // 如果沒有傳 secretAccessKey 則保留舊的
     if (!newConfig.secretAccessKey && config.s3?.secretAccessKey) {
         s3.secretAccessKey = config.s3.secretAccessKey;
     }
@@ -699,14 +767,14 @@ app.post('/api/admin/s3', adminMiddleware, async (c) => {
     return c.json({ success: true });
 });
 
-// 用戶管理 API
+// 用户管理 API
 app.post('/api/admin/add-user', adminMiddleware, async (c) => {
     const db = c.get('db');
     const { username, password } = await c.req.json();
     const bcrypt = await import('bcryptjs');
     
     if (await data.findUserByName(db, username)) {
-        return c.json({ success: false, message: '用戶名已存在' }, 400);
+        return c.json({ success: false, message: '用户名已存在' }, 400);
     }
     
     const salt = bcrypt.genSaltSync(10);
@@ -730,7 +798,6 @@ app.post('/api/admin/delete-user', adminMiddleware, async (c) => {
     const db = c.get('db');
     const { userId } = await c.req.json();
     await data.deleteUser(db, userId);
-    // 注意：這裡應該也要清理文件，暫略
     return c.json({ success: true });
 });
 
@@ -741,10 +808,25 @@ app.post('/api/admin/set-quota', adminMiddleware, async (c) => {
     return c.json({ success: true });
 });
 
+// 管理员扫描 (Mock实现，因Worker超时限制)
+app.post('/api/admin/scan', adminMiddleware, async (c) => {
+    const { userId, storageType } = await c.req.json();
+    const stream = new ReadableStream({
+        start(controller) {
+            controller.enqueue(new TextEncoder().encode(`正在初始化 ${storageType} 扫描 (User ID: ${userId})...\n`));
+            setTimeout(() => {
+                controller.enqueue(new TextEncoder().encode("错误: Cloudflare Workers 环境下的全量扫描功能暂未完全实现。\n"));
+                controller.enqueue(new TextEncoder().encode("提示: 请确保数据库与存储桶保持同步。\n"));
+                controller.close();
+            }, 1000);
+        }
+    });
+    return new Response(stream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+});
+
 // =================================================================================
-// 8. 靜態資源 Fallback
+// 8. 静态资源 Fallback
 // =================================================================================
-// 這些路由主要用於 SPA 頁面刷新時的 Fallback，或者未配置 assets 時的提示
 app.get('/login', (c) => c.html('<html><body><h1>Please host the frontend static files (public/login.html)</h1></body></html>'));
 app.get('/view/*', (c) => c.html('<html><body><h1>Manager App Loading... (Host public/manager.html)</h1></body></html>'));
 
