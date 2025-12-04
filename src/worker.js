@@ -18,7 +18,6 @@ const app = new Hono();
 
 // 1. 通用静态资源 (CSS, JS, Fonts, Images)
 // 将此中间件放在最前面，确保静态文件 (如 manager.css) 不需要登录就能访问
-// 如果文件存在于 KV 中，它会直接返回；否则调用 next() 继续处理 API 路由
 app.use('/*', serveStatic({ root: './', manifest }));
 
 // 2. 特定页面路由重写
@@ -72,7 +71,7 @@ const authMiddleware = async (c, next) => {
         '/favicon.ico'
     ];
     
-    // 如果请求路径以 publicPaths 开头，或者已经被上面的 serveStatic 处理过(实际上serveStatic处理完会结束请求，不会到这)，放行
+    // 如果请求路径以 publicPaths 开头，放行
     if (publicPaths.some(path => c.req.path.startsWith(path))) {
         return await next();
     }
@@ -209,7 +208,7 @@ app.get('/logout', async (c) => {
 // 4. 分享功能路由
 // =================================================================================
 
-// 分享页面 HTML Shell
+// 分享页面 HTML Shell (用于 KV 中可能不存在的动态渲染页面，或者作为 fallback)
 const SHARE_HTML = `
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -232,7 +231,6 @@ const SHARE_HTML = `
     <div class="container" id="app"><h2 style="text-align:center;">正在加载...</h2></div>
     <script src="/shares.js"></script>
     <script>
-        // 内联简单的加载逻辑作为 fallback，实际逻辑移到 shares.js 或在此处展开
         const pathParts = window.location.pathname.split('/');
         const token = pathParts.pop();
         const app = document.getElementById('app');
@@ -434,7 +432,7 @@ app.get('/download/proxy/:messageId', async (c) => {
 });
 
 // =================================================================================
-// 6. 其他 API (删除, 移动, 搜索, Admin等)
+// 6. 其他 API
 // =================================================================================
 app.get('/api/user/quota', async (c) => c.json(await data.getUserQuota(c.get('db'), c.get('user').id)));
 app.post('/api/folder/create', async (c) => {
