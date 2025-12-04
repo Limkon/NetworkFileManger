@@ -2,61 +2,47 @@
 import { Buffer } from 'node:buffer';
 import crypto from 'node:crypto';
 
-const ALGORITHM = 'aes-256-cbc';
-const IV_LENGTH = 16;
+let SECRET_KEY = null;
+const IV_LENGTH = 16; // AES block size
 
-// 預設密鑰，稍後通過 initCrypto 覆蓋 (保持原有的預設值以兼容舊數據或開發環境)
-let SECRET_KEY = 'a8e2a32e9b1c7d5f6a7b3c4d5e8f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f';
-let KEY = crypto.createHash('sha256').update(String(SECRET_KEY)).digest('base64').substring(0, 32);
-
-/**
- * 初始化加密模塊，注入環境變數中的 SECRET
- * @param {string} secretEnv - 從 env 獲取的 SESSION_SECRET
- */
-export function initCrypto(secretEnv) {
-    if (secretEnv) {
-        SECRET_KEY = secretEnv;
-        KEY = crypto.createHash('sha256').update(String(SECRET_KEY)).digest('base64').substring(0, 32);
+export function initCrypto(secret) {
+    if (!secret) {
+        console.warn("No SESSION_SECRET provided, using insecure default.");
+        // 如果沒有提供密鑰，使用一個默認值（僅用於開發，生產環境請務必設置環境變量）
+        SECRET_KEY = crypto.createHash('sha256').update('default-insecure-secret').digest();
+    } else {
+        // 使用 SHA-256 將任意長度的字符串轉換為 32 字節的密鑰
+        SECRET_KEY = crypto.createHash('sha256').update(secret).digest();
     }
 }
 
-/**
- * 加密函數
- * @param {string | number} text 要加密的文字或數字
- * @returns {string} 加密後的字串
- */
+// 簡單的 ID 加密 (用於 URL 參數，避免直接暴露自增 ID)
 export function encrypt(text) {
+    if (!text && text !== 0) return null;
     try {
         const iv = crypto.randomBytes(IV_LENGTH);
-        const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(KEY), iv);
-        let encrypted = cipher.update(String(text));
+        const cipher = crypto.createCipheriv('aes-256-cbc', SECRET_KEY, iv);
+        let encrypted = cipher.update(text.toString());
         encrypted = Buffer.concat([encrypted, cipher.final()]);
-        // 使用 Base64 URL 安全編碼，以避免 URL 中的特殊字元問題
-        return iv.toString('base64url') + ':' + encrypted.toString('base64url');
-    } catch (error) {
-        console.error("加密失敗:", error);
-        return String(text); // 加密失敗時返回原文字(轉字串)
+        return iv.toString('hex') + ':' + encrypted.toString('hex');
+    } catch (e) {
+        console.error("Encrypt error:", e);
+        return null;
     }
 }
 
-/**
- * 解密函數
- * @param {string} text 要解密的字串
- * @returns {string|null} 解密後的字串，若失敗則為 null
- */
 export function decrypt(text) {
     if (!text) return null;
     try {
         const textParts = text.split(':');
-        if (textParts.length < 2) return null; // 格式不正確
-        const iv = Buffer.from(textParts.shift(), 'base64url');
-        const encryptedText = Buffer.from(textParts.join(':'), 'base64url');
-        const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(KEY), iv);
+        const iv = Buffer.from(textParts.shift(), 'hex');
+        const encryptedText = Buffer.from(textParts.join(':'), 'hex');
+        const decipher = crypto.createDecipheriv('aes-256-cbc', SECRET_KEY, iv);
         let decrypted = decipher.update(encryptedText);
         decrypted = Buffer.concat([decrypted, decipher.final()]);
         return decrypted.toString();
-    } catch (error) {
-        console.error(`解密失敗: "${text}"`, error);
-        return null; // 解密失敗
+    } catch (e) {
+        // 解密失敗通常意味著 ID 無效或偽造
+        return null;
     }
 }
