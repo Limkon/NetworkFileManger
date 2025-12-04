@@ -3,16 +3,16 @@ import { INIT_SQL } from './schema.js';
 
 export default class Database {
     /**
-     * @param {D1Database} d1 - Cloudflare D1 綁定對象
+     * @param {D1Database} d1 - Cloudflare D1 绑定对象
      */
     constructor(d1) {
         this.d1 = d1;
     }
 
     /**
-     * 獲取單行數據
-     * @param {string} sql - SQL 查詢語句
-     * @param {Array} params - 查詢參數
+     * 获取单行数据
+     * @param {string} sql - SQL 查询语句
+     * @param {Array} params - 查询参数
      */
     async get(sql, params = []) {
         const stmt = this.d1.prepare(sql).bind(...params);
@@ -20,9 +20,9 @@ export default class Database {
     }
 
     /**
-     * 獲取多行數據
-     * @param {string} sql - SQL 查詢語句
-     * @param {Array} params - 查詢參數
+     * 获取多行数据
+     * @param {string} sql - SQL 查询语句
+     * @param {Array} params - 查询参数
      */
     async all(sql, params = []) {
         const stmt = this.d1.prepare(sql).bind(...params);
@@ -31,9 +31,9 @@ export default class Database {
     }
 
     /**
-     * 執行寫入操作 (INSERT, UPDATE, DELETE)
-     * @param {string} sql - SQL 語句
-     * @param {Array} params - 參數
+     * 执行写入操作 (INSERT, UPDATE, DELETE)
+     * @param {string} sql - SQL 语句
+     * @param {Array} params - 参数
      */
     async run(sql, params = []) {
         const stmt = this.d1.prepare(sql).bind(...params);
@@ -41,7 +41,7 @@ export default class Database {
     }
 
     /**
-     * 執行原始 SQL (通常用於批量執行或不帶參數的語句)
+     * 执行原始 SQL (通常用于批量执行或不带参数的语句)
      * @param {string} sql 
      */
     async exec(sql) {
@@ -49,15 +49,15 @@ export default class Database {
     }
 
     /**
-     * 初始化數據庫表結構
+     * 初始化数据库表结构
      */
     async initDB() {
         try {
             await this.d1.exec(INIT_SQL);
-            return { success: true, message: "數據庫表結構已初始化" };
+            return { success: true, message: "数据库表结构已初始化" };
         } catch (error) {
-            console.error("數據庫初始化失敗:", error);
-            throw new Error(`數據庫初始化失敗: ${error.message}`);
+            console.error("数据库初始化失败:", error);
+            throw new Error(`数据库初始化失败: ${error.message}`);
         }
     }
 }
