@@ -4,6 +4,7 @@ import Database from './database.js';
 import ConfigManager from './config.js';
 import * as data from './data.js';
 import { initStorage } from './storage/index.js';
+import { initCrypto } from './crypto.js';
 
 const app = new Hono();
 
@@ -119,9 +120,12 @@ const SHARE_HTML = `
 `;
 
 // =================================================================================
-// 1. 全局中間件：注入 DB, Config, Storage
+// 1. 全局中間件：注入 DB, Config, Storage, Crypto
 // =================================================================================
 app.use('*', async (c, next) => {
+    // 0. 初始化環境變數中的加密密鑰 (Cloudflare Workers 中 process.env 不可用)
+    initCrypto(c.env.SESSION_SECRET);
+
     // 1. 初始化 DB
     const db = new Database(c.env.DB);
     c.set('db', db);
@@ -134,8 +138,8 @@ app.use('*', async (c, next) => {
     const config = await configManager.load();
     c.set('config', config);
 
-    // 4. 初始化存儲後端
-    const storage = initStorage(config); 
+    // 4. 初始化存儲後端 (將 c.env 傳入以獲取 BOT_TOKEN 等環境變數)
+    const storage = initStorage(config, c.env); 
     c.set('storage', storage);
 
     await next();
@@ -152,7 +156,9 @@ const authMiddleware = async (c, next) => {
         '/setup', 
         '/api/public', // 分享相關 API
         '/share/view', // 分享頁面
-        '/share/download' // 分享下載
+        '/share/download', // 分享下載
+        '/assets',     // 靜態資源路徑 (如果需要)
+        '/favicon.ico'
     ];
     
     if (publicPaths.some(path => c.req.path.startsWith(path))) {
