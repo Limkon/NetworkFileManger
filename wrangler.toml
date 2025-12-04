@@ -1,4 +1,4 @@
-name = "network-file-manager"
+name = "netdrv"
 main = "src/worker.js"
 compatibility_date = "2023-12-01"
 compatibility_flags = ["nodejs_compat"]
