@@ -114,7 +114,6 @@
                         <label for="storage-select" style="display:block;margin-bottom:5px;">储存后端：</label>
                         <select id="storage-select">
                             <option value="telegram">Telegram</option>
-                            <option value="local">本地服务器</option>
                             <option value="webdav">WebDAV</option>
                             <option value="s3">S3 存储 (兼容 AWS/MinIO)</option>
                         </select>
@@ -263,7 +262,6 @@
     <script src="/vendor/axios/axios.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // ... (省略未修改的 DOM 元素声明)
             const currentModeEl = document.getElementById('current-mode');
             const currentUploadModeEl = document.getElementById('current-upload-mode');
             const storageSelect = document.getElementById('storage-select');
@@ -295,10 +293,10 @@
             const s3AccessKeyInput = document.getElementById('s3-access-key');
             const s3SecretKeyInput = document.getElementById('s3-secret-key');
 
-            // --- 配额管理 DOM 元素 (省略未修改的) ---
+            // --- 配额管理 DOM 元素 ---
             const quotaTableBody = document.getElementById('quota-table-body');
             
-            // --- 字节格式化工具函数 (保留) ---
+            // --- 字节格式化工具函数 ---
             const formatBytes = (bytes, decimals = 2) => {
                 if (!bytes || bytes === 0) return '0 B';
                 const k = 1024;
@@ -308,7 +306,7 @@
                 return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
             };
             
-            // --- GB和Bytes转换工具函数 (保留) ---
+            // --- GB和Bytes转换工具函数 ---
             const bytesToGB = (bytes) => (bytes / 1073741824); // 1GB = 1073741824 Bytes
             const GBToBytes = (gb) => Math.round(parseFloat(gb) * 1073741824);
             const DEFAULT_MAX_GB = bytesToGB(1073741824).toFixed(2); 
@@ -319,10 +317,9 @@
                     // 更新储存模式显示
                     let modeText = '未知';
                     switch (res.data.storageMode) {
-                        case 'local': modeText = '本地服务器'; break;
                         case 'telegram': modeText = 'Telegram'; break;
                         case 'webdav': modeText = 'WebDAV'; break;
-                        case 's3': modeText = 'S3 存储'; break; // 新增
+                        case 's3': modeText = 'S3 存储'; break;
                     }
                     currentModeEl.textContent = modeText;
                     storageSelect.value = res.data.storageMode;
@@ -346,7 +343,7 @@
                         loadWebdavSettings();
                     } else if (res.data.storageMode === 's3') {
                         s3SettingsCard.style.display = 'block';
-                        loadS3Settings(); // 新增
+                        loadS3Settings();
                     }
                 } catch (error) {
                     currentModeEl.textContent = '读取失败';
@@ -365,7 +362,6 @@
                 }
                 
                 try {
-                    // 分别储存，或者由后端提供一个统一的接口。这里我们分别调用。
                     await axios.post('/api/admin/storage-mode', { mode: newStorageMode });
                     await axios.post('/api/admin/upload-mode', { mode: newUploadMode });
                     
@@ -377,7 +373,7 @@
                 }
             });
 
-            // --- WebDAV 配置函数 (保留) ---
+            // --- WebDAV 配置函数 ---
             function clearWebdavForm() {
                 webdavForm.reset();
                 webdavIdInput.value = '';
@@ -424,7 +420,6 @@
                     const payload = { url, username, password };
                     if (id) payload.id = id;
                     
-                    // 如果密码为空，不发送 password 字段，让后端保留旧密码
                     if (password.trim() === '') {
                         delete payload.password;
                     }
@@ -449,7 +444,7 @@
                          webdavIdInput.value = config.id;
                          webdavUrlInput.value = config.url;
                          webdavUsernameInput.value = config.username;
-                         webdavPasswordInput.value = ''; // Don't show old password
+                         webdavPasswordInput.value = ''; 
                          webdavPasswordInput.placeholder = "已设定（留空则不变更）";
                          saveWebdavBtn.textContent = '更新设定';
                      }
@@ -468,21 +463,19 @@
                 }
             });
             
-            // --- 新增 S3 配置函数 ---
+            // --- S3 配置函数 ---
             async function loadS3Settings() {
                 try {
                     const res = await axios.get('/api/admin/s3');
                     const config = res.data.s3 || {};
-                    // 注意：Endpoint 可选，其他必填
                     s3EndpointInput.value = config.endpoint || '';
                     s3RegionInput.value = config.region || '';
                     s3BucketInput.value = config.bucket || '';
                     s3AccessKeyInput.value = config.accessKeyId || '';
-                    s3SecretKeyInput.value = ''; // 总是清空密码输入框
+                    s3SecretKeyInput.value = ''; 
                     s3SecretKeyInput.placeholder = config.secretAccessKey ? '已设定（留空则不变更）' : 'Secret Access Key';
                 } catch (error) {
                     console.error('加载 S3 配置失败:', error);
-                    // 仅在明确的服务器错误时显示弹窗
                     if (error.response && error.response.status !== 401) {
                          alert('加载 S3 配置失败: ' + (error.response?.data?.message || '服务器错误'));
                     }
@@ -496,22 +489,21 @@
                     region: s3RegionInput.value.trim(),
                     bucket: s3BucketInput.value.trim(),
                     accessKeyId: s3AccessKeyInput.value.trim(),
-                    secretAccessKey: s3SecretKeyInput.value // 仅在有值时传递
+                    secretAccessKey: s3SecretKeyInput.value 
                 };
                 
                 if (payload.secretAccessKey === '') {
-                    delete payload.secretAccessKey; // 不传递空字符串，让后端保留旧值
+                    delete payload.secretAccessKey;
                 }
                 if (payload.endpoint === '') {
-                     delete payload.endpoint; // 不传递空字符串
+                     delete payload.endpoint; 
                 }
-
 
                 try {
                     const res = await axios.post('/api/admin/s3', payload);
                     if (res.data.success) {
                         alert('S3 配置已储存!');
-                        loadS3Settings(); // 重新加载以更新显示并清空密码输入框
+                        loadS3Settings(); 
                     } else {
                         alert('储存失败: ' + res.data.message);
                     }
@@ -520,7 +512,7 @@
                 }
             });
             
-            // --- 储存模式切换事件 (更新) ---
+            // --- 储存模式切换事件 ---
             storageSelect.addEventListener('change', () => {
                 const mode = storageSelect.value;
                 webdavSettingsCard.style.display = 'none';
@@ -535,10 +527,10 @@
                 }
             });
             
-            // --- 用户管理和配额函数 (保留未修改的) ---
+            // --- 用户管理和配额函数 ---
             async function loadUsers() {
                 try {
-                    // 1. 加载用户管理列表 (只显示普通用户)
+                    // 1. 加载用户管理列表
                     const resUsers = await axios.get('/api/admin/users');
                     userTableBody.innerHTML = '';
                     resUsers.data.forEach(user => {
@@ -554,7 +546,7 @@
                         userTableBody.innerHTML += row;
                     });
 
-                    // 2. 加载用户配额管理列表 (所有用户及其配额)
+                    // 2. 加载用户配额管理列表
                     const resQuota = await axios.get('/api/admin/users-with-quota');
                     quotaTableBody.innerHTML = '';
 
@@ -576,7 +568,6 @@
                                 <td>—</td>
                             `;
                         } else {
-                            // 普通用户可编辑配额
                             row.innerHTML = `
                                 <td>${user.username}</td>
                                 <td>普通用户</td>
@@ -652,7 +643,7 @@
                 }
             });
 
-            // --- 配额表操作事件 (保留) ---
+            // --- 配额表操作事件 ---
             quotaTableBody.addEventListener('click', async (e) => {
                 const target = e.target.closest('button');
                 if (!target) return;
@@ -695,9 +686,7 @@
                     }
                     
                     const newMaxBytes = GBToBytes(newGB);
-                    // 尝试从已用空间单元格中提取字节数
                     const usedText = row.querySelector('td:nth-child(3)').textContent;
-                    // 使用正则从 "10 MB" 格式中提取数字部分
                     const usedMatch = usedText.match(/(\d+(\.\d+)?)\s*([A-Z]+)/);
                     let currentUsedBytes = 0;
                     if(usedMatch) {
@@ -732,7 +721,7 @@
                         });
                         if (response.data.success) {
                             alert('配额更新成功！');
-                            loadUsers(); // 重新加载列表以更新显示
+                            loadUsers(); 
                         } else {
                             alert('配额更新失败：' + response.data.message);
                         }
@@ -742,11 +731,9 @@
                 }
             });
 
-
             loadUsers();
             loadCurrentSettings();
         });
     </script>
 </body>
 </html>
-
