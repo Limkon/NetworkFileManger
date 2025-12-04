@@ -1,19 +1,24 @@
 {
   "name": "network-file-manager",
   "version": "1.0.0",
-  "private": true,
+  "description": "A secure network file manager running on Cloudflare Workers",
+  "main": "src/worker.js",
   "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
-    "deploy": "wrangler deploy",
     "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
     "start": "wrangler dev"
   },
   "dependencies": {
-    "aws4fetch": "^1.0.17",
+    "aws4fetch": "^1.0.20",
     "bcryptjs": "^2.4.3",
-    "hono": "^3.11.7"
+    "hono": "^3.12.12"
   },
   "devDependencies": {
-    "wrangler": "^3.19.0"
+    "wrangler": "^3.114.15"
   }
 }
