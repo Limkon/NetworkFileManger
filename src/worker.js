@@ -12,7 +12,7 @@ import { initCrypto, encrypt, decrypt } from './crypto.js';
 const app = new Hono();
 
 // =================================================================================
-// 0. 全局错误处理 (带详细堆栈打印)
+// 0. 全局错误处理
 // =================================================================================
 app.onError((err, c) => {
     console.error('❌ [FATAL] Server Error:', err);
@@ -22,42 +22,52 @@ app.onError((err, c) => {
     return c.text(`❌ 系统严重错误:\n${err.message}\n\nStack:\n${err.stack}`, 500);
 });
 
+// 404 处理 (可选，用于调试)
+app.notFound((c) => {
+    console.warn(`[404] Not Found: ${c.req.path}`);
+    return c.text('404 Not Found - Path: ' + c.req.path, 404);
+});
+
 // =================================================================================
-// 1. 静态资源服务
+// 1. 静态资源服务 (顺序非常重要！)
 // =================================================================================
-app.use('/*', serveStatic({ root: './', manifest }));
+
+// 1.1 优先处理特定页面路由 (SPA 模式)
+// 访问 /view/任意ID 时，强制返回 manager.html
+app.get('/view/*', serveStatic({ path: 'manager.html', manifest }));
+
+// 1.2 其他独立页面
 app.get('/login', serveStatic({ path: 'login.html', manifest }));
 app.get('/register', serveStatic({ path: 'register.html', manifest }));
 app.get('/admin', serveStatic({ path: 'admin.html', manifest }));
 app.get('/editor', serveStatic({ path: 'editor.html', manifest }));
-app.get('/view/*', serveStatic({ path: 'manager.html', manifest }));
+
+// 1.3 通用静态资源 (CSS, JS, Fonts, Images)
+// 放在最后，作为兜底，处理如 /manager.js, /manager.css 等请求
+app.use('/*', serveStatic({ root: './', manifest }));
+
 
 // =================================================================================
-// 2. 全局中间件：注入核心依赖 (DB, Config, Storage)
+// 2. 全局中间件：注入核心依赖
 // =================================================================================
 app.use('*', async (c, next) => {
     try {
-        // 1. 检查环境变量
         if (!c.env.DB) throw new Error("缺少 D1 数据库绑定 (DB)");
         if (!c.env.CONFIG_KV) throw new Error("缺少 KV 绑定 (CONFIG_KV)");
         if (!c.env.SESSION_SECRET) throw new Error("缺少环境变量 SESSION_SECRET");
 
-        // 2. 初始化加密与数据库
         initCrypto(c.env.SESSION_SECRET);
         c.set('db', new Database(c.env.DB));
         c.set('configManager', new ConfigManager(c.env.CONFIG_KV));
 
-        // 3. 加载配置
         const config = await c.get('configManager').load();
         c.set('config', config);
 
-        // 4. 初始化存储 (带容错处理)
         try {
             const storage = initStorage(config, c.env); 
             c.set('storage', storage);
         } catch (storageErr) {
             console.warn("⚠️ 存储初始化警告:", storageErr.message);
-            // 注入伪存储对象，防止系统崩溃，允许用户进入 Admin 修复配置
             c.set('storage', { 
                 list: async () => [], 
                 upload: async () => { throw new Error(`存储未配置: ${storageErr.message}`); },
@@ -73,11 +83,23 @@ app.use('*', async (c, next) => {
 // 3. 认证中间件
 // =================================================================================
 const authMiddleware = async (c, next) => {
+    // 排除静态文件和公开页面
+    // 注意：静态文件通常已被 serveStatic 处理并返回，不会走到这里。
+    // 但为了安全和逻辑完整，保留排除列表。
     const publicPaths = ['/login', '/register', '/setup', '/api/public', '/share/', '/assets', '/favicon.ico'];
+    
+    // 如果是 .js, .css 等静态资源请求，且前面 serveStatic 没拦截到(理论上不应发生)，直接放行或404
+    if (c.req.path.match(/\.(js|css|png|jpg|woff2?|svg)$/)) return await next();
+
     if (publicPaths.some(p => c.req.path.startsWith(p))) return await next();
 
     const token = getCookie(c, 'remember_me');
-    if (!token) return c.req.path.startsWith('/api') ? c.json({success:false, message: '未登录'}, 401) : c.redirect('/login');
+    if (!token) {
+        if (c.req.path.startsWith('/api') || c.req.header('accept')?.includes('json')) {
+            return c.json({ success: false, message: '未登录' }, 401);
+        }
+        return c.redirect('/login');
+    }
 
     const user = await data.findAuthToken(c.get('db'), token);
     if (!user || user.expires_at < Date.now()) {
@@ -98,10 +120,10 @@ const adminMiddleware = async (c, next) => {
 };
 
 // =================================================================================
-// 4. 上传接口 (带详细调试日志)
+// 4. 上传接口 (带日志)
 // =================================================================================
 app.post('/upload', async (c) => {
-    console.log("🚀 [Upload] 收到上传请求");
+    console.log("🚀 [Upload] 收到请求");
     const db = c.get('db'); 
     const storage = c.get('storage'); 
     const user = c.get('user');
@@ -113,7 +135,7 @@ app.post('/upload', async (c) => {
         const folderId = parseInt(decrypt(folderIdRaw));
         const conflictMode = c.req.query('conflictMode') || 'rename';
         
-        console.log(`🔍 [Upload] 参数: folderId=${folderId}, raw=${folderIdRaw}, conflict=${conflictMode}, user=${user.username}`);
+        console.log(`🔍 [Upload] folderId=${folderId}, conflict=${conflictMode}`);
 
         if (isNaN(folderId)) throw new Error(`无效的 Folder ID`);
 
@@ -124,7 +146,6 @@ app.post('/upload', async (c) => {
             else if (Array.isArray(val)) val.forEach(v => { if (v instanceof File) files.push(v); });
         });
 
-        console.log(`📦 [Upload] 待处理文件数: ${files.length}`);
         if (files.length === 0) return c.json({ success: false, message: '未接收到文件' }, 400);
 
         const totalSize = files.reduce((acc, f) => acc + f.size, 0);
@@ -132,34 +153,26 @@ app.post('/upload', async (c) => {
 
         const results = [];
         for (const file of files) {
-            console.log(`👉 [Upload] 开始处理: ${file.name} (${file.size} bytes)`);
+            console.log(`👉 [Upload] 处理: ${file.name}`);
             try {
                 let finalName = file.name;
                 let existingFile = null;
 
-                // 1. 验重逻辑
                 if (conflictMode === 'overwrite') {
-                    console.log(`   [Check] 模式: 覆盖。正在查找旧文件...`);
-                    // 兼容旧表结构，不查 id
+                    // 使用 SELECT * 确保拿到所有字段
                     existingFile = await db.get(
-                        "SELECT message_id FROM files WHERE fileName = ? AND folder_id = ? AND user_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)", 
+                        "SELECT * FROM files WHERE fileName = ? AND folder_id = ? AND user_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)", 
                         [file.name, folderId, user.id]
                     );
-                    if (existingFile) console.log(`   [Check] 发现旧文件, message_id: ${existingFile.message_id}`);
                 } else {
-                    console.log(`   [Check] 模式: 重命名。获取唯一文件名...`);
                     finalName = await data.getUniqueName(db, folderId, file.name, user.id, 'file');
-                    console.log(`   [Check] 最终文件名: ${finalName}`);
                 }
 
-                // 2. 上传到存储后端
-                console.log(`   [Storage] 上传至后端 (${config.storageMode})...`);
+                console.log(`   [Storage] 上传中... (${finalName})`);
                 const uploadResult = await storage.upload(file, finalName, file.type, user.id, folderId, config);
-                console.log(`   [Storage] 上传成功, FileID: ${uploadResult.fileId}`);
                 
-                // 3. 写入数据库
                 if (existingFile) {
-                    console.log(`   [DB] 更新旧记录...`);
+                    console.log(`   [DB] 更新记录...`);
                     await data.updateFile(db, BigInt(existingFile.message_id), {
                         file_id: uploadResult.fileId,
                         size: file.size,
@@ -168,8 +181,8 @@ app.post('/upload', async (c) => {
                         thumb_file_id: uploadResult.thumbId || null
                     }, user.id);
                 } else {
+                    console.log(`   [DB] 插入记录...`);
                     const messageId = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000));
-                    console.log(`   [DB] 插入新记录, MessageID: ${messageId}`);
                     await data.addFile(db, {
                         message_id: messageId, 
                         fileName: finalName, 
@@ -180,24 +193,22 @@ app.post('/upload', async (c) => {
                         date: Date.now()
                     }, folderId, user.id, config.storageMode);
                 }
-                
                 results.push({ name: finalName, success: true });
-                console.log(`✅ [Upload] 文件 ${file.name} 全部完成`);
             } catch (innerErr) {
-                console.error(`❌ [Upload] 文件 ${file.name} 失败:`, innerErr);
+                console.error(`❌ [Upload] 文件失败:`, innerErr);
                 results.push({ name: file.name, success: false, error: innerErr.message });
             }
         }
         return c.json({ success: true, results });
 
     } catch (err) {
-        console.error("❌ [Upload] 接口异常:", err);
+        console.error("❌ [Upload] 全局异常:", err);
         return c.json({ success: false, message: err.message }, 500);
     }
 });
 
 // =================================================================================
-// 5. 核心业务路由
+// 5. 核心路由
 // =================================================================================
 
 app.get('/', async (c) => {
@@ -224,7 +235,7 @@ app.get('/api/folder/:encryptedId', async (c) => {
         const pathArr = await data.getFolderPath(db, id, user.id);
         return c.json({ contents: res, path: pathArr });
     } catch (e) { 
-        console.error(`[Folder] 获取失败:`, e);
+        console.error(`[Folder] 失败:`, e);
         return c.json({ success: false, message: e.message }, 500); 
     }
 });
@@ -237,19 +248,15 @@ app.get('/download/proxy/:messageId', async (c) => {
     if (!files.length) return c.text('File not found', 404);
     const file = files[0];
     try {
-        console.log(`[Download] 下载文件: ${file.fileName}, ID: ${file.file_id}`);
         const { stream, contentType, headers } = await storage.download(file.file_id, user.id);
         const resHeaders = new Headers(headers);
         resHeaders.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
         resHeaders.set('Content-Type', file.mimetype || contentType || 'application/octet-stream');
         return new Response(stream, { headers: resHeaders });
-    } catch (e) { 
-        console.error(`[Download] 失败:`, e);
-        return c.text(`Download Error: ${e.message}`, 500); 
-    }
+    } catch (e) { return c.text(`Download Error: ${e.message}`, 500); }
 });
 
-// 其他API
+// API Routes
 app.get('/api/user/quota', async (c) => c.json(await data.getUserQuota(c.get('db'), c.get('user').id)));
 app.post('/api/folder/create', async (c) => {
     const { name, parentId } = await c.req.json();
@@ -277,17 +284,13 @@ app.post('/api/rename', async (c) => {
     return c.json({ success: true });
 });
 app.post('/api/move', async (c) => {
-    console.log("[Move] 收到移动请求");
     const { files, folders, targetFolderId, conflictMode } = await c.req.json();
     const tid = parseInt(decrypt(targetFolderId));
     if(!tid) return c.json({success:false},400);
     try {
         await data.moveItems(c.get('db'), c.get('storage'), (files||[]).map(BigInt), (folders||[]).map(parseInt), tid, c.get('user').id, conflictMode || 'rename');
         return c.json({ success: true });
-    } catch(e) {
-        console.error("[Move] 失败:", e);
-        return c.json({ success: false, message: e.message }, 500);
-    }
+    } catch(e) { return c.json({ success: false, message: e.message }, 500); }
 });
 app.get('/api/search', async (c) => c.json(await data.searchItems(c.get('db'), c.req.query('q'), c.get('user').id)));
 app.get('/api/shares', async (c) => c.json(await data.getActiveShares(c.get('db'), c.get('user').id)));
@@ -308,9 +311,7 @@ app.post('/api/folder/lock', async (c) => {
     return c.json({success:true});
 });
 
-// =================================================================================
-// 6. 分享展示页面与下载
-// =================================================================================
+// 分享展示页
 const SHARE_HTML = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>分享的文件</title><link rel="stylesheet" href="/manager.css"><link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css"><style>.container{max-width:800px;margin:50px auto;padding:20px;background:#fff;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}.locked-screen{text-align:center}.file-icon{font-size:64px;color:#007bff;margin-bottom:20px}.btn{display:inline-block;padding:10px 20px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px;cursor:pointer;border:none}.list-item{display:flex;align-items:center;padding:10px;border-bottom:1px solid #eee}.list-item i{margin-right:10px;width:20px;text-align:center}.error-msg{color:red;margin-top:10px}</style></head><body><div class="container" id="app"><h2 style="text-align:center;">正在加載...</h2></div><script>const pathParts=window.location.pathname.split('/');const token=pathParts.pop();const app=document.getElementById('app');async function load(){try{const res=await fetch('/api/public/share/'+token);const data=await res.json();if(!res.ok)throw new Error(data.message||'加載失敗');if(data.isLocked&&!data.isUnlocked){renderPasswordForm(data.name)}else if(data.type==='file'){renderFile(data)}else{renderFolder(data)}}catch(e){app.innerHTML='<div style="text-align:center;color:red;"><h3>錯誤</h3><p>'+e.message+'</p></div>'}}function renderPasswordForm(name){app.innerHTML=\`<div class="locked-screen"><i class="fas fa-lock file-icon"></i><h3>\${name} 受密碼保護</h3><div style="margin:20px 0;"><input type="password" id="pass" placeholder="請輸入密碼" style="padding:10px; width:200px;"><button class="btn" onclick="submitPass()">解鎖</button></div><p id="err" class="error-msg"></p></div>\`}window.submitPass=async()=>{const pass=document.getElementById('pass').value;const res=await fetch('/api/public/share/'+token+'/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pass})});const d=await res.json();if(d.success)load();else document.getElementById('err').textContent=d.message};function renderFile(data){app.innerHTML=\`<div style="text-align:center;"><i class="fas fa-file file-icon"></i><h2>\${data.name}</h2><p>大小: \${(data.size/1024/1024).toFixed(2)} MB</p><p>時間: \${new Date(data.date).toLocaleString()}</p><div style="margin-top:30px;"><a href="\${data.downloadUrl}" class="btn"><i class="fas fa-download"></i> 下載文件</a></div></div>\`}function renderFolder(data){let html=\`<h3>\${data.name} (文件夾)</h3><div class="list">\`;if(data.folders)data.folders.forEach(f=>{html+=\`<div class="list-item"><i class="fas fa-folder" style="color:#fbc02d;"></i> <span>\${f.name}</span></div>\`});if(data.files)data.files.forEach(f=>{html+=\`<div class="list-item"><i class="fas fa-file" style="color:#555;"></i> <span>\${f.name}</span> <span style="margin-left:auto;font-size:12px;color:#999;">\${(f.size/1024).toFixed(1)} KB</span></div>\`});html+='</div>';app.innerHTML=html}load()</script></body></html>`;
 
 app.get('/api/public/share/:token', async (c) => {
@@ -359,7 +360,7 @@ app.get('/share/download/:token', async (c) => {
 app.get('/share/view/:type/:token', (c) => c.html(SHARE_HTML));
 
 // =================================================================================
-// 7. 管理员路由
+// 6. Admin 路由
 // =================================================================================
 app.get('/api/admin/users', adminMiddleware, async (c) => {
     try { return c.json(await data.listAllUsers(c.get('db'))); } catch(e) { return c.json({success:false, message:e.message}, 500); }
