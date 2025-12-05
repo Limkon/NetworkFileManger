@@ -1,54 +1,114 @@
-import { initSQL } from './schema.js';
-
 export default class Database {
     constructor(d1) {
         this.d1 = d1;
     }
 
     async initDB() {
-        // 修复方案：手动分割 SQL 语句并逐条执行，避免 D1 exec() 方法的内部 Bug
-        if (!initSQL) return;
+        // 用户表
+        await this.d1.exec(`
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL,
+                is_admin INTEGER DEFAULT 0,
+                max_storage_bytes INTEGER DEFAULT 1073741824
+            );
+        `);
 
-        // 1. 移除注释 (简单处理，移除 -- 开头的行)
-        const cleanSQL = initSQL.replace(/--.*$/gm, '');
+        // 文件夹表
+        // 注意：增加 is_deleted 默认值，增加 share 相关字段
+        await this.d1.exec(`
+            CREATE TABLE IF NOT EXISTS folders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                parent_id INTEGER,
+                user_id INTEGER NOT NULL,
+                password TEXT,
+                is_deleted INTEGER DEFAULT 0,
+                deleted_at INTEGER,
+                share_token TEXT,
+                share_expires_at INTEGER,
+                share_password TEXT,
+                created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+                UNIQUE(name, parent_id, user_id)
+            );
+        `);
 
-        // 2. 按分号分割语句
-        const statements = cleanSQL
-            .split(';')
-            .map(s => s.trim())
-            .filter(s => s.length > 0);
+        // 文件表
+        // 注意：增加 is_deleted 默认值，增加 share 相关字段
+        await this.d1.exec(`
+            CREATE TABLE IF NOT EXISTS files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id TEXT NOT NULL,
+                fileName TEXT NOT NULL,
+                mimetype TEXT,
+                file_id TEXT NOT NULL,
+                thumb_file_id TEXT,
+                date INTEGER,
+                size INTEGER,
+                folder_id INTEGER,
+                user_id INTEGER NOT NULL,
+                storage_type TEXT,
+                is_deleted INTEGER DEFAULT 0,
+                deleted_at INTEGER,
+                share_token TEXT,
+                share_expires_at INTEGER,
+                share_password TEXT
+            );
+        `);
 
-        console.log(`Initializing DB with ${statements.length} statements...`);
+        // 认证 Token 表
+        await this.d1.exec(`
+            CREATE TABLE IF NOT EXISTS auth_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token TEXT NOT NULL UNIQUE,
+                expires_at INTEGER NOT NULL
+            );
+        `);
 
-        // 3. 逐条执行
-        for (const sql of statements) {
-            try {
-                await this.d1.prepare(sql).run();
-            } catch (e) {
-                // 忽略 "表已存在" 等非致命错误，或者打印出来排查
-                console.warn("SQL Execution Warning:", e.message, "SQL:", sql.substring(0, 50));
-            }
-        }
-        
-        console.log("Database initialized successfully.");
+        console.log("数据库结构初始化完成 (已包含分享与回收站字段)。");
     }
 
-    // 封装 get 方法 (查询单条)
-    async get(sql, params = []) {
-        const stmt = this.d1.prepare(sql).bind(...params);
-        return await stmt.first();
-    }
-
-    // 封装 all 方法 (查询多条)
-    async all(sql, params = []) {
-        const stmt = this.d1.prepare(sql).bind(...params);
-        const { results } = await stmt.all();
-        return results || [];
-    }
-
-    // 封装 run 方法 (插入/更新/删除)
+    // 封装 D1 的 prepare 和 bind
     async run(sql, params = []) {
-        const stmt = this.d1.prepare(sql).bind(...params);
-        return await stmt.run();
+        try {
+            const stmt = this.d1.prepare(sql).bind(...params);
+            return await stmt.run();
+        } catch (e) {
+            console.error(`SQL 执行错误: ${sql}`, e);
+            throw new Error('数据库操作失败: ' + e.message);
+        }
+    }
+
+    async get(sql, params = []) {
+        try {
+            const stmt = this.d1.prepare(sql).bind(...params);
+            return await stmt.first();
+        } catch (e) {
+            console.error(`SQL 查询错误 (get): ${sql}`, e);
+            throw e;
+        }
+    }
+
+    async all(sql, params = []) {
+        try {
+            const stmt = this.d1.prepare(sql).bind(...params);
+            const result = await stmt.all();
+            return result.results || [];
+        } catch (e) {
+            console.error(`SQL 查询错误 (all): ${sql}`, e);
+            throw e;
+        }
+    }
+
+    // 批量执行 (用于事务或迁移)
+    async batch(statements) {
+        try {
+            return await this.d1.batch(statements);
+        } catch (e) {
+            console.error("批量操作失败", e);
+            throw e;
+        }
     }
 }
