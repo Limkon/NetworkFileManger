@@ -1,3 +1,7 @@
+{
+type: uploaded file
+fileName: limkon/cfilemanger/CFileManger-628f1ebbb4936b82ef613f3eb2f30b8e37290086/public/manager.js
+fullContent:
 // public/manager.js
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -54,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Move Modal
     const moveModal = document.getElementById('moveModal');
+    const moveBtn = document.getElementById('moveBtn'); // 获取移动按钮
     const folderTree = document.getElementById('folderTree');
     const confirmMoveBtn = document.getElementById('confirmMoveBtn');
     const cancelMoveBtn = document.getElementById('cancelMoveBtn');
@@ -61,6 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Share Modal
     const shareModal = document.getElementById('shareModal');
+    const shareBtn = document.getElementById('shareBtn'); // 获取分享按钮
     const confirmShareBtn = document.getElementById('confirmShareBtn');
     const cancelShareBtn = document.getElementById('cancelShareBtn');
     const closeShareModalBtn = document.getElementById('closeShareModalBtn');
@@ -68,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const customExpiresInput = document.getElementById('customExpiresInput');
     const sharePasswordInput = document.getElementById('sharePasswordInput');
     const shareResult = document.getElementById('shareResult');
+    const shareOptions = document.getElementById('shareOptions'); // 分享选项区域
     const shareLinkContainer = document.getElementById('shareLinkContainer');
     const copyLinkBtn = document.getElementById('copyLinkBtn');
 
@@ -77,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const closePreviewBtn = document.querySelector('#previewModal .close-button');
 
     // =================================================================================
-    // 状态栏管理器 (新增)
+    // 状态栏管理器
     // =================================================================================
     const TaskManager = {
         timer: null,
@@ -426,6 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setDisplay('downloadBtn', isSingle && firstType === 'file');
             setDisplay('renameBtn', isSingle);
             setDisplay('shareBtn', isSingle);
+            setDisplay('moveBtn', true); // 移动功能对单选或多选都有效
             setDisplay('lockBtn', isSingle && firstType === 'folder');
             const delBtn = document.getElementById('deleteBtn');
             if(delBtn) delBtn.innerHTML = '<i class="fas fa-trash-alt"></i> 删除';
@@ -540,6 +548,249 @@ document.addEventListener('DOMContentLoaded', () => {
         if (newName && newName !== item.name) {
             try { await axios.post('/api/rename', { type, id, name: newName }); loadFolder(currentFolderId); } catch (error) { alert('重命名失败'); }
         }
+    });
+
+    // =================================================================================
+    // 修复：移动功能逻辑 (Move)
+    // =================================================================================
+    if (moveBtn) {
+        moveBtn.addEventListener('click', () => {
+            if (selectedItems.size === 0) return;
+            selectedMoveTargetId = null;
+            confirmMoveBtn.disabled = true;
+            moveModal.style.display = 'block';
+            loadFolderTree();
+        });
+    }
+    
+    cancelMoveBtn.addEventListener('click', () => moveModal.style.display = 'none');
+
+    async function loadFolderTree() {
+        folderTree.innerHTML = '<div style="padding:10px;color:#666;">加载中...</div>';
+        try {
+            const res = await axios.get('/api/folders');
+            const allFolders = res.data; // [{id, name, parent_id, encrypted_id}]
+            renderFolderTree(allFolders);
+        } catch (e) {
+            folderTree.innerHTML = `<div style="color:red;padding:10px;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    function renderFolderTree(folders) {
+        // 1. 找出要移动的文件夹ID (为了避免移动到自己或子文件夹)
+        const movingFolderIds = new Set();
+        selectedItems.forEach(itemStr => {
+            const [type, id] = parseItemId(itemStr);
+            if (type === 'folder') {
+                // 这里的 id 是加密 ID，但 API 返回的 parent_id 是明文 int。
+                // 我们需要找到对应的明文 ID，或者 API 返回时 parent_id 也是加密的?
+                // 根据 src/data.js getAllFolders, id 是明文int, encrypted_id 是加密的.
+                // parseItemId 返回的是 encrypted_id (因为 grid item dataset.id 用的是 getItemId -> file:message_id / folder:id)
+                // 等等，grid item dataset.id: getItemId(item)
+                // item.id 是明文 (getFolderContents returned id).
+                // wait... data.js: getFolderContents returns folders.map(f => ({ ...f, encrypted_id: encrypt(f.id) }))
+                // getItemId uses `item.id` which is likely the raw ID if sent by getFolderContents?
+                // let's check data.js getFolderContents again.
+                // SELECT id... -> raw ID.
+                // So item.id is raw ID. getItemId uses raw ID.
+                // But loadFolder uses encryptedId.
+                // Let's fix getAllFolders: it returns {id, name, parent_id, encrypted_id}.
+                const matched = folders.find(f => f.encrypted_id === id || f.id == id);
+                if(matched) movingFolderIds.add(matched.id);
+            }
+        });
+
+        // 2. 构建树结构
+        const map = {};
+        let root = null;
+        folders.forEach(f => {
+            f.children = [];
+            map[f.id] = f;
+        });
+        
+        folders.forEach(f => {
+            if (f.parent_id && map[f.parent_id]) {
+                map[f.parent_id].children.push(f);
+            } else {
+                // 假设 parent_id 为 null 或者是找不到父节点的孤儿节点（当作根处理）
+                if(!root) root = f; 
+                // 注意：如果允许多个根目录( rare but possible with bugs), array logic needed.
+                // 但这里我们主要找 parent_id IS NULL 的那个
+            }
+        });
+        
+        // 如果没找到 root (bad data?)
+        if (!root && folders.length > 0) root = folders[0]; 
+
+        // 3. 渲染
+        folderTree.innerHTML = '';
+        if (root) {
+            folderTree.appendChild(createFolderNode(root, movingFolderIds));
+        } else {
+            folderTree.innerHTML = '<div style="padding:10px;">没有文件夹</div>';
+        }
+    }
+
+    function createFolderNode(folder, movingIds) {
+        const container = document.createElement('div');
+        
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'folder-item';
+        
+        // 检查是否是正在移动的文件夹自己
+        const isSelf = movingIds.has(folder.id);
+        // 注意：这里不做复杂的子节点禁用检查，只禁用自己。如果是移动到子节点，后端或逻辑应阻止，或简单处理。
+        // 完善的逻辑应该递归禁用子节点。
+
+        if (isSelf) {
+            itemDiv.style.color = '#999';
+            itemDiv.style.cursor = 'not-allowed';
+            itemDiv.innerHTML = `<i class="fas fa-folder" style="margin-right:5px;"></i> ${escapeHtml(folder.name)} (当前)`;
+        } else {
+            itemDiv.innerHTML = `<i class="fas fa-folder" style="margin-right:5px;"></i> ${escapeHtml(folder.name)}`;
+            itemDiv.onclick = () => {
+                document.querySelectorAll('.folder-item').forEach(el => el.classList.remove('selected'));
+                itemDiv.classList.add('selected');
+                selectedMoveTargetId = folder.encrypted_id;
+                confirmMoveBtn.disabled = false;
+            };
+        }
+        container.appendChild(itemDiv);
+
+        if (folder.children && folder.children.length > 0) {
+            const childrenContainer = document.createElement('div');
+            childrenContainer.style.paddingLeft = '20px';
+            folder.children.forEach(child => {
+                // 递归传递 movingIds，如果父节点是正在移动的，子节点也不应可选（防止循环）
+                // 这里的 movingIds 只是当前选中的。我们需要判断 child 是否是 movingIds 的后代。
+                // 简单起见，如果 isSelf 为 true，子节点也视为不可选。
+                const childNode = createFolderNode(child, movingIds);
+                if(isSelf) {
+                    // 禁用子节点交互
+                    const childItemDiv = childNode.querySelector('.folder-item');
+                    if(childItemDiv) {
+                        childItemDiv.style.color = '#999';
+                        childItemDiv.style.cursor = 'not-allowed';
+                        childItemDiv.onclick = null;
+                    }
+                }
+                childrenContainer.appendChild(childNode);
+            });
+            container.appendChild(childrenContainer);
+        }
+
+        return container;
+    }
+
+    confirmMoveBtn.addEventListener('click', async () => {
+        if (!selectedMoveTargetId) return;
+        const files = []; const folders = [];
+        selectedItems.forEach(id => { 
+            const [type, realId] = parseItemId(id); 
+            // 这里的 realId 是 items 里的 ID。
+            // items 是 getFolderContents 来的。
+            // getFolderContents: files use message_id (string), folders use id (int).
+            if (type === 'file') files.push(realId); 
+            else folders.push(realId); 
+        });
+        
+        try {
+            confirmMoveBtn.textContent = '移动中...';
+            confirmMoveBtn.disabled = true;
+            TaskManager.show('正在移动...', 'fas fa-arrows-alt'); 
+            
+            await axios.post('/api/move', { files, folders, targetFolderId: selectedMoveTargetId });
+            
+            TaskManager.success('移动完成');
+            moveModal.style.display = 'none';
+            selectedItems.clear();
+            loadFolder(currentFolderId);
+        } catch (e) {
+            alert('移动失败: ' + (e.response?.data?.message || e.message));
+            TaskManager.error('移动失败');
+        } finally {
+            confirmMoveBtn.textContent = '确定移动';
+            confirmMoveBtn.disabled = false;
+        }
+    });
+
+    // =================================================================================
+    // 修复：分享功能逻辑 (Share)
+    // =================================================================================
+    if (shareBtn) {
+        shareBtn.addEventListener('click', () => {
+            if (selectedItems.size !== 1) return alert('一次只能分享一个项目');
+            
+            // 重置模态框状态
+            shareModal.style.display = 'block';
+            shareOptions.style.display = 'block';
+            shareResult.style.display = 'none';
+            sharePasswordInput.value = '';
+            expiresInSelect.value = '24h';
+            customExpiresInput.style.display = 'none';
+        });
+    }
+
+    closeShareModalBtn.addEventListener('click', () => shareModal.style.display = 'none');
+    cancelShareBtn.addEventListener('click', () => shareModal.style.display = 'none');
+
+    expiresInSelect.addEventListener('change', (e) => {
+        customExpiresInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
+    });
+
+    confirmShareBtn.addEventListener('click', async () => {
+        const itemStr = Array.from(selectedItems)[0];
+        const [type, id] = parseItemId(itemStr); // id is raw ID
+        const password = sharePasswordInput.value;
+        const expiresIn = expiresInSelect.value;
+        
+        let customExpiresAt = null;
+        if (expiresIn === 'custom') {
+            const val = customExpiresInput.value;
+            if (!val) return alert('请选择过期时间');
+            customExpiresAt = new Date(val).getTime();
+        }
+
+        try {
+            confirmShareBtn.disabled = true;
+            confirmShareBtn.textContent = '生成中...';
+            
+            const res = await axios.post('/api/share/create', {
+                itemId: id,
+                itemType: type,
+                expiresIn,
+                password,
+                customExpiresAt
+            });
+
+            if (res.data.success) {
+                shareOptions.style.display = 'none';
+                shareResult.style.display = 'block';
+                const fullLink = window.location.origin + res.data.link;
+                shareLinkContainer.textContent = fullLink;
+                copyLinkBtn.dataset.link = fullLink;
+            } else {
+                alert('生成失败: ' + res.data.message);
+            }
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+        } finally {
+            confirmShareBtn.disabled = false;
+            confirmShareBtn.textContent = '生成链接';
+        }
+    });
+
+    copyLinkBtn.addEventListener('click', () => {
+        const link = copyLinkBtn.dataset.link;
+        navigator.clipboard.writeText(link).then(() => {
+            const originalText = copyLinkBtn.textContent;
+            copyLinkBtn.textContent = '已复制!';
+            copyLinkBtn.classList.add('success-btn');
+            setTimeout(() => {
+                copyLinkBtn.textContent = originalText;
+                copyLinkBtn.classList.remove('success-btn');
+            }, 2000);
+        });
     });
 
     document.getElementById('downloadBtn').addEventListener('click', () => {
@@ -853,30 +1104,6 @@ document.addEventListener('DOMContentLoaded', () => {
             updateQuota();
         }, 1000);
     }
-
-    // 绑定 Move 按钮到 TaskManager
-    confirmMoveBtn.addEventListener('click', async () => {
-        if (!selectedMoveTargetId) return;
-        const files = []; const folders = [];
-        selectedItems.forEach(id => { const [type, realId] = parseItemId(id); if (type === 'file') files.push(realId); else folders.push(realId); });
-        try {
-            confirmMoveBtn.textContent = '移动中...';
-            TaskManager.show('正在移动...', 'fas fa-arrows-alt'); // 状态栏
-            
-            await axios.post('/api/move', { files, folders, targetFolderId: selectedMoveTargetId });
-            
-            alert('移动成功');
-            TaskManager.success('移动完成'); // 状态栏
-            moveModal.style.display = 'none';
-            selectedItems.clear();
-            loadFolder(currentFolderId);
-        } catch (e) {
-            alert('移动失败: ' + (e.response?.data?.message || e.message));
-            TaskManager.error('移动失败');
-        } finally {
-            confirmMoveBtn.textContent = '确定移动';
-        }
-    });
 
     document.getElementById('showUploadModalBtn').addEventListener('click', () => {
         uploadModal.style.display = 'block';
