@@ -434,10 +434,6 @@ export async function unifiedDelete(db, storage, itemId, itemType, userId, expli
     if (!explicitFolderIds && !explicitFileIds && itemType === 'folder') {
         folderIdsToDelete.push(itemId);
     }
-    // 此外，getFolderDeletionData 只返回了子文件，我们也需要递归找出所有子文件夹的 ID 进行 DB 删除
-    // 为了简化，这里假设 executeDeletion 会配合前端传来的 ID 列表工作，或者利用级联删除
-    // 此处简化：只删除传入的 folderID 及其子文件记录，子文件夹记录未递归删除 (DB 残留风险)
-    // 生产环境应完善 getFolderDeletionData 返回所有子文件夹 ID
     
     await executeDeletion(db, fileIdsToDelete, folderIdsToDelete, userId);
 }
@@ -492,16 +488,81 @@ export async function softDeleteItems(db, fileIds = [], folderIds = [], userId) 
     return { success: true };
 }
 
+// [重构] 还原项目：增加自动重命名逻辑，防止同名冲突
 export async function restoreItems(db, fileIds = [], folderIds = [], userId) {
+    // 1. 恢复文件 (带冲突检测和自动重命名)
     if (fileIds.length > 0) {
         const stringFileIds = fileIds.map(id => id.toString());
-        const place = stringFileIds.map(() => '?').join(',');
-        await db.run(`UPDATE files SET is_deleted = 0, deleted_at = NULL WHERE message_id IN (${place}) AND user_id = ?`, [...stringFileIds, userId]);
+        // 获取要恢复的文件详情
+        const filesToRestore = await getFilesByIds(db, stringFileIds, userId);
+
+        for (const file of filesToRestore) {
+            let checkName = file.fileName;
+            let counter = 1;
+            
+            // 循环检查目标文件夹下是否存在同名且未删除的文件
+            while (true) {
+                // 检查是否存在同名且 is_deleted=0 的文件
+                const existing = await db.get(
+                    "SELECT 1 FROM files WHERE folder_id = ? AND user_id = ? AND is_deleted = 0 AND fileName = ?", 
+                    [file.folder_id, userId, checkName]
+                );
+                if (!existing) break; // 没有冲突，跳出循环
+                
+                // 生成新文件名: name.txt -> name (1).txt -> name (2).txt
+                const lastDotIndex = file.fileName.lastIndexOf('.');
+                if (lastDotIndex !== -1) {
+                    const name = file.fileName.substring(0, lastDotIndex);
+                    const ext = file.fileName.substring(lastDotIndex);
+                    checkName = `${name} (${counter})${ext}`;
+                } else {
+                    checkName = `${file.fileName} (${counter})`;
+                }
+                counter++;
+            }
+            
+            // 执行恢复，如果名字变了则同时更新文件名
+            await db.run(
+                `UPDATE files SET is_deleted = 0, deleted_at = NULL, fileName = ? WHERE message_id = ? AND user_id = ?`, 
+                [checkName, file.message_id, userId]
+            );
+        }
     }
+
+    // 2. 恢复文件夹 (带冲突检测和自动重命名，防止触发 UNIQUE 约束报错)
     if (folderIds.length > 0) {
-        const place = folderIds.map(() => '?').join(',');
-        await db.run(`UPDATE folders SET is_deleted = 0, deleted_at = NULL WHERE id IN (${place}) AND user_id = ?`, [...folderIds, userId]);
+         for (const folderId of folderIds) {
+            const folder = await db.get("SELECT name, parent_id FROM folders WHERE id = ?", [folderId]);
+            if (!folder) continue;
+            
+            let checkName = folder.name;
+            let counter = 1;
+            
+            while (true) {
+                let querySql = "";
+                let params = [];
+                if (folder.parent_id === null) {
+                    querySql = "SELECT 1 FROM folders WHERE parent_id IS NULL AND user_id = ? AND is_deleted = 0 AND name = ? AND id != ?";
+                    params = [userId, checkName, folderId];
+                } else {
+                    querySql = "SELECT 1 FROM folders WHERE parent_id = ? AND user_id = ? AND is_deleted = 0 AND name = ? AND id != ?";
+                    params = [folder.parent_id, userId, checkName, folderId];
+                }
+                
+                const existing = await db.get(querySql, params);
+                if (!existing) break;
+                
+                checkName = `${folder.name} (${counter})`;
+                counter++;
+            }
+
+            await db.run(
+                `UPDATE folders SET is_deleted = 0, deleted_at = NULL, name = ? WHERE id = ? AND user_id = ?`,
+                [checkName, folderId, userId]
+            );
+         }
     }
+    
     return { success: true };
 }
 
@@ -670,4 +731,26 @@ export async function scanStorageAndImport(db, storage, userId, controller) {
         }
         log(`扫描完成。新增导入 ${importedCount} 个文件。`);
     } catch (e) { log(`扫描过程发生错误: ${e.message}`); }
+}
+
+// =================================================================================
+// 上传冲突检查 (新增)
+// =================================================================================
+
+export async function checkFileExistence(db, files, folderId, userId) {
+    if (!files || files.length === 0) return [];
+    
+    const names = files.map(f => f.relativePath);
+    const placeholders = names.map(() => '?').join(',');
+    
+    // 关键修正：添加 AND is_deleted = 0 条件，忽略回收站中的文件
+    const sql = `SELECT fileName FROM files WHERE folder_id = ? AND user_id = ? AND is_deleted = 0 AND fileName IN (${placeholders})`;
+    
+    const existing = await db.all(sql, [folderId, userId, ...names]);
+    const existingSet = new Set(existing.map(e => e.fileName));
+    
+    return files.map(f => ({
+        relativePath: f.relativePath,
+        exists: existingSet.has(f.relativePath)
+    }));
 }
