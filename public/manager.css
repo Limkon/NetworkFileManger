@@ -22,10 +22,10 @@ body {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    overflow: hidden; /* 防止整個頁面滾動，內容區域單獨滾動 */
+    overflow: hidden; /* 防止整个页面滚动，内容区域单独滚动 */
 }
 
-/* --- 1. Navbar (頂部導航) --- */
+/* --- 1. Navbar (顶部导航) --- */
 .navbar {
     background-color: #fff;
     padding: 0 20px;
@@ -97,7 +97,7 @@ body {
     color: var(--primary-color);
 }
 
-/* --- 2. Trash Banner (回收站橫幅) --- */
+/* --- 2. Trash Banner (回收站横幅) --- */
 .trash-banner {
     background-color: #fff3cd;
     color: #856404;
@@ -127,7 +127,7 @@ body {
     gap: 10px;
 }
 
-/* --- 3. Toolbar (工具欄) --- */
+/* --- 3. Toolbar (工具栏) --- */
 .toolbar {
     padding: 15px 20px;
     display: flex;
@@ -196,7 +196,7 @@ body {
     background-color: #218838;
 }
 
-/* --- 4. Breadcrumb (麵包屑) --- */
+/* --- 4. Breadcrumb (面包屑) --- */
 .breadcrumb-container {
     padding: 0 20px;
     margin-bottom: 10px;
@@ -249,10 +249,10 @@ body {
     border-radius: 12px;
 }
 
-/* --- 5. Main Content (主內容區) --- */
+/* --- 5. Main Content (主内容区) --- */
 .main-content {
     flex: 1;
-    overflow-y: auto; /* 只有這部分滾動 */
+    overflow-y: auto; /* 只有这部分滚动 */
     padding: 0 20px 20px;
     position: relative;
 }
@@ -388,7 +388,7 @@ body {
     font-size: 1.2rem;
 }
 
-/* --- 6. Status Bar (底部狀態欄) --- */
+/* --- 6. Status Bar (底部状态栏) --- */
 .status-bar {
     background: #fff;
     border-top: 1px solid var(--border-color);
@@ -425,7 +425,7 @@ body {
     transition: width 0.3s;
 }
 
-/* 右側工作狀態欄 */
+/* 右侧工作状态栏 */
 .task-status-bar {
     display: flex;
     align-items: center;
@@ -471,7 +471,7 @@ body {
     transition: width 0.2s linear;
 }
 
-/* --- 7. Context Menu (右鍵菜單) --- */
+/* --- 7. Context Menu (右键菜单) --- */
 .context-menu {
     position: fixed;
     background: #fff;
@@ -519,7 +519,7 @@ body {
 .text-danger { color: var(--danger-color); }
 .text-danger:hover { background-color: #fff5f5; color: #c82333; }
 
-/* --- 8. Modals (模態框) --- */
+/* --- 8. Modals (模态框) --- */
 .modal {
     display: none;
     position: fixed;
@@ -603,7 +603,7 @@ body {
 
 .full-width { width: 100%; }
 
-/* --- 9. Folder Tree (移動文件夾時的選擇樹) --- */
+/* --- 9. Folder Tree (移动文件夹时的选择树) --- */
 .folder-tree-container {
     border: 1px solid #eee;
     max-height: 300px;
@@ -625,7 +625,7 @@ body {
 .folder-item:hover { background-color: #f8f9fa; }
 .folder-item.selected { background-color: #e8f0fe; color: var(--primary-color); font-weight: 500; }
 
-/* --- 10. Share Result (分享結果框) --- */
+/* --- 10. Share Result (分享结果框) --- */
 .code-box {
     background: #f1f3f4;
     padding: 12px;
@@ -638,8 +638,8 @@ body {
     font-size: 0.9rem;
 }
 
-/* --- 11. Drag Drop Overlay (拖拽上傳遮罩) --- */
-/* 隱形的全屏感應區 */
+/* --- 11. Drag Drop Overlay (拖拽上传遮罩) --- */
+/* 隐形的全屏感应区 */
 #dropZone {
     position: fixed;
     top: 0;
@@ -650,7 +650,7 @@ body {
     display: none;
 }
 
-/* 視覺提示層 */
+/* 视觉提示层 */
 .drop-overlay {
     display: none;
     position: fixed;
