@@ -77,42 +77,53 @@ document.addEventListener('DOMContentLoaded', () => {
     const closePreviewBtn = document.querySelector('#previewModal .close-button');
 
     // =================================================================================
-    // 状态栏管理器 (新增)
+    // 状态栏管理器
     // =================================================================================
     const TaskManager = {
         timer: null,
         show: (text, iconClass = 'fas fa-spinner') => {
             if (TaskManager.timer) clearTimeout(TaskManager.timer);
-            taskStatusBar.classList.add('active');
-            taskText.textContent = text;
-            taskIcon.className = `task-icon spinning ${iconClass}`;
-            taskIcon.classList.add('spinning');
-            taskProgress.style.width = '0%';
+            if (taskStatusBar) {
+                taskStatusBar.classList.add('active');
+                if (taskText) taskText.textContent = text;
+                if (taskIcon) {
+                    taskIcon.className = `task-icon spinning ${iconClass}`;
+                    taskIcon.classList.add('spinning');
+                }
+                if (taskProgress) taskProgress.style.width = '0%';
+            }
         },
         update: (percent, text) => {
-            taskProgress.style.width = percent + '%';
-            if(text) taskText.textContent = text;
+            if (taskProgress) taskProgress.style.width = percent + '%';
+            if (text && taskText) taskText.textContent = text;
         },
         success: (text = '完成') => {
-            taskText.textContent = text;
-            taskIcon.className = 'task-icon fas fa-check-circle'; // 停止旋转，显示打钩
-            taskIcon.style.color = '#28a745';
-            taskProgress.style.width = '100%';
+            if (taskText) taskText.textContent = text;
+            if (taskIcon) {
+                taskIcon.className = 'task-icon fas fa-check-circle';
+                taskIcon.style.color = '#28a745';
+                taskIcon.classList.remove('spinning');
+            }
+            if (taskProgress) taskProgress.style.width = '100%';
             TaskManager.hide(2000);
         },
         error: (text = '失败') => {
-            taskText.textContent = text;
-            taskIcon.className = 'task-icon fas fa-times-circle';
-            taskIcon.style.color = '#dc3545';
+            if (taskText) taskText.textContent = text;
+            if (taskIcon) {
+                taskIcon.className = 'task-icon fas fa-times-circle';
+                taskIcon.style.color = '#dc3545';
+                taskIcon.classList.remove('spinning');
+            }
             TaskManager.hide(3000);
         },
         hide: (delay = 0) => {
             TaskManager.timer = setTimeout(() => {
-                taskStatusBar.classList.remove('active');
-                // 重置状态以便下次使用
+                if (taskStatusBar) taskStatusBar.classList.remove('active');
                 setTimeout(() => {
-                    taskIcon.style.color = '';
-                    taskIcon.classList.remove('spinning');
+                    if (taskIcon) {
+                        taskIcon.style.color = '';
+                        taskIcon.classList.remove('spinning');
+                    }
                 }, 300);
             }, delay);
         }
@@ -342,9 +353,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if(isTrashMode) return;
         if (item.type === 'folder') { loadFolder(item.encrypted_id); } 
         else { 
-            // 简单的下载反馈
             TaskManager.show('正在请求下载...', 'fas fa-download');
-            setTimeout(() => TaskManager.success('下载已开始'), 2000);
+            setTimeout(() => TaskManager.success('下载已开始'), 1500);
             
             const ext = item.name.split('.').pop().toLowerCase();
             if (['txt', 'md', 'js', 'html', 'css', 'json', 'xml', 'py', 'java', 'c', 'cpp', 'log', 'ini', 'conf'].includes(ext)) {
