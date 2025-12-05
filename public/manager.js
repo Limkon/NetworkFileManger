@@ -1,6 +1,25 @@
 // public/manager.js
 
 document.addEventListener('DOMContentLoaded', () => {
+    // =================================================================================
+    // 0. 全局配置与拦截器 (新增)
+    // =================================================================================
+    
+    // 处理 401/403 错误，自动跳转登录
+    axios.interceptors.response.use(
+        response => response,
+        error => {
+            if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+                // 防止无限循环跳转，只在非登录页跳转
+                if (!window.location.pathname.includes('/login')) {
+                    alert('会话已过期，请重新登录');
+                    window.location.href = '/login';
+                }
+            }
+            return Promise.reject(error);
+        }
+    );
+
     // 1. 状态变量与配置
     let currentFolderId = null; 
     let currentPath = [];       
@@ -95,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         success: (text = '完成') => {
             taskText.textContent = text;
-            taskIcon.className = 'task-icon fas fa-check-circle';
+            taskIcon.className = 'task-icon fas fa-check-circle'; // 停止旋转，显示打钩
             taskIcon.style.color = '#28a745';
             taskProgress.style.width = '100%';
             TaskManager.hide(2000);
@@ -109,6 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hide: (delay = 0) => {
             TaskManager.timer = setTimeout(() => {
                 taskStatusBar.classList.remove('active');
+                // 重置状态以便下次使用
                 setTimeout(() => {
                     taskIcon.style.color = '';
                     taskIcon.classList.remove('spinning');
@@ -691,7 +711,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     // =================================================================================
-    // 9. 上传功能 (修复版：增加后端结果检查)
+    // 9. 上传功能 (修复版：移除 Content-Type 头并增加返回值检查)
     // =================================================================================
 
     async function getFolderContents(encryptedId) {
@@ -868,9 +888,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 let currentFileLoaded = 0;
-                // 增加返回值检查
+                // ============ 关键修复 ============
+                // 不手动设置 Content-Type，让浏览器自动生成带 boundary 的头
                 const res = await axios.post(`/upload?folderId=${targetFolderId || ''}`, formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' },
                     onUploadProgress: (p) => {
                         const diff = p.loaded - currentFileLoaded;
                         currentFileLoaded = p.loaded;
@@ -879,19 +899,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             const percent = Math.min(100, Math.round((loadedBytesGlobal * 100) / totalBytes));
                             progressBar.style.width = percent + '%';
                             progressBar.textContent = percent + '%';
-                            TaskManager.update(percent, statusMsg);
+                            TaskManager.update(percent, statusMsg); // 同步更新底部状态栏
                         }
                     }
                 });
 
-                // 核心修复：检查后端返回的 JSON 中是否包含错误信息
+                // 检查后端返回的详细结果，防止假成功
                 if (res.data.results && Array.isArray(res.data.results)) {
                     const failedItem = res.data.results.find(r => !r.success);
                     if (failedItem) {
                         throw new Error(failedItem.error || '上传被后端拒绝');
                     }
                 }
-
+                
                 successCount++;
             } catch (error) {
                 console.error(`上传失败: ${file.name}`, error);
