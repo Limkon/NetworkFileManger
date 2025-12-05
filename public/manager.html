@@ -69,9 +69,19 @@
 
     <div class="status-bar">
         <div class="quota-container">
-            <span>存储空间: <span id="quotaUsed">0 B</span> / <span id="quotaMax">0 B</span></span>
+            <span>存储: <span id="quotaUsed">0 B</span> / <span id="quotaMax">0 B</span></span>
             <div class="progress-track">
                 <div id="quotaBar" class="progress-fill"></div>
+            </div>
+        </div>
+
+        <div id="taskStatusBar" class="task-status-bar">
+            <div class="task-info">
+                <i id="taskIcon" class="fas fa-spinner task-icon"></i>
+                <span id="taskText">就绪</span>
+            </div>
+            <div class="mini-progress-track">
+                <div id="taskProgress" class="mini-progress-fill"></div>
             </div>
         </div>
     </div>
