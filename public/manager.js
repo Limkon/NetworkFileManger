@@ -46,7 +46,7 @@ function formatSize(bytes) {
 // =================================================================================
 document.addEventListener('DOMContentLoaded', () => {
     
-    // --- 2.1 状态变量声明 ---
+    // --- 变量声明 ---
     let currentFolderId = null; 
     let currentPath = [];       
     let items = [];             
@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let conflictResolutionState = { applyToAll: false, choice: null };
     let selectedMoveTargetId = null;
 
-    // --- 2.2 DOM 元素引用 ---
+    // --- DOM 引用 ---
     const itemGrid = document.getElementById('itemGrid');
     const itemListView = document.getElementById('itemListView');
     const itemListBody = document.getElementById('itemListBody');
@@ -78,7 +78,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileInput = document.getElementById('fileInput');
     const folderInput = document.getElementById('folderInput');
     
-    // 动态创建上传状态文本
     let uploadStatusText = document.getElementById('uploadStatusText');
     if (!uploadStatusText && progressArea) {
         uploadStatusText = document.createElement('div');
@@ -144,8 +143,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const conflictSkipBtn = document.getElementById('conflictSkipBtn');
     const conflictCancelBtn = document.getElementById('conflictCancelBtn');
 
-    // --- 2.3 核心功能函数定义 (必须在调用前定义) ---
+    // --- 函数定义区 (先定义，后使用) ---
 
+    // 1. 任务管理器
     const TaskManager = {
         timer: null,
         show: (text, iconClass = 'fas fa-spinner') => {
@@ -180,98 +180,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    function updateFolderSelectForUpload(folders) {
-        if(!folderSelect) return;
-        folderSelect.innerHTML = `<option value="${currentFolderId}">当前文件夹</option>`;
-        items.forEach(item => {
-            if(item.type === 'folder') {
-                const op = document.createElement('option');
-                op.value = item.encrypted_id;
-                op.textContent = item.name;
-                folderSelect.appendChild(op);
-            }
-        });
-    }
-
-    function createGridItem(item) {
-        const div = document.createElement('div');
-        div.className = 'grid-item item-card';
-        if(isTrashMode) div.classList.add('deleted');
-        div.dataset.id = getItemId(item);
-        div.onclick = (e) => handleItemClick(e, item, div);
-        div.oncontextmenu = (e) => handleContextMenu(e, item);
-        div.ondblclick = () => handleItemDblClick(item);
-
-        const iconClass = getIconClass(item); 
-        const iconColor = item.type === 'folder' ? '#fbc02d' : '#007bff';
-
-        div.innerHTML = `
-            <div class="item-icon"><i class="${iconClass}" style="color: ${iconColor};"></i>${item.is_locked ? '<i class="fas fa-lock lock-badge"></i>' : ''}</div>
-            <div class="item-info"><h5 title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h5></div>
-            ${isMultiSelectMode ? '<div class="select-checkbox"><i class="fas fa-check"></i></div>' : ''}
-        `;
-        if (selectedItems.has(getItemId(item))) div.classList.add('selected');
-        return div;
-    }
-
-    function createListItem(item) {
-        const div = document.createElement('div');
-        div.className = 'list-row list-item';
-        if(isTrashMode) div.classList.add('deleted');
-        div.dataset.id = getItemId(item);
-        div.onclick = (e) => handleItemClick(e, item, div);
-        div.oncontextmenu = (e) => handleContextMenu(e, item);
-        div.ondblclick = () => handleItemDblClick(item);
-
-        const iconClass = getIconClass(item); 
-        const dateStr = item.date ? new Date(item.date).toLocaleString() : (item.deleted_at ? new Date(item.deleted_at).toLocaleString() : '-');
-        const sizeStr = item.size !== undefined ? formatSize(item.size) : '-';
-
-        div.innerHTML = `
-            <div class="list-icon"><i class="${iconClass}" style="color: ${item.type === 'folder' ? '#fbc02d' : '#555'}"></i></div>
-            <div class="list-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
-            <div class="list-size">${sizeStr}</div>
-            <div class="list-date">${dateStr}</div>
-        `;
-        if (selectedItems.has(getItemId(item))) div.classList.add('selected');
-        return div;
-    }
-
-    function renderItems(itemsToRender) {
-        if(itemGrid) itemGrid.innerHTML = '';
-        if(itemListBody) itemListBody.innerHTML = '';
+    // 2. 右键菜单逻辑
+    function showContextMenu(x, y) {
+        if(!contextMenu) return;
+        const menuWidth = 200; 
+        const menuHeight = isTrashMode ? 80 : 350; 
+        if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
+        if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
         
-        if (itemsToRender.length === 0) {
-            if(itemGrid) itemGrid.innerHTML = '<div class="empty-folder" style="text-align:center; padding:50px; color:#999;"><i class="fas fa-folder-open" style="font-size:48px; margin-bottom:10px;"></i><p>此位置为空</p></div>';
-            if(itemListBody) itemListBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#999;">为空</td></tr>`;
-            return;
-        }
-        itemsToRender.forEach(item => {
-            if(itemGrid) itemGrid.appendChild(createGridItem(item));
-            if(itemListBody) itemListBody.appendChild(createListItem(item));
-        });
-    }
-
-    // --- 关键修复：renderBreadcrumb 必须在 loadFolder 之前定义 ---
-    function renderBreadcrumb() {
-        if(isTrashMode) return; 
-        if(!breadcrumb) return;
-        breadcrumb.innerHTML = '';
-        const rootLi = document.createElement('a');
-        rootLi.href = '#';
-        rootLi.innerHTML = '<i class="fas fa-home"></i> 首页';
-        rootLi.onclick = (e) => { e.preventDefault(); if(currentPath.length > 0) loadFolder(currentPath[0].encrypted_id); };
-        breadcrumb.appendChild(rootLi);
-        currentPath.forEach((folder, index) => {
-            const sep = document.createElement('span');
-            sep.className = 'separator'; sep.textContent = '/';
-            breadcrumb.appendChild(sep);
-            const a = document.createElement('a');
-            a.textContent = folder.name;
-            if (index === currentPath.length - 1) { a.classList.add('active'); } 
-            else { a.href = '#'; a.onclick = (e) => { e.preventDefault(); loadFolder(folder.encrypted_id); }; }
-            breadcrumb.appendChild(a);
-        });
+        contextMenu.style.top = `${y}px`;
+        contextMenu.style.left = `${x}px`;
+        contextMenu.style.display = 'flex';
+        
+        setTimeout(() => {
+            document.addEventListener('click', () => {
+                contextMenu.style.display = 'none';
+            }, { once: true });
+        }, 50);
     }
 
     function updateContextMenuState(hasSelection) {
@@ -302,16 +227,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (hasSelection) {
             globalActions.forEach(el => el.style.display = 'none');
             itemActions.forEach(el => el.style.display = 'flex');
-            const setDisplay = (btn, show) => { if (btn) btn.style.display = show ? 'flex' : 'none'; };
-            setDisplay(openBtn, isSingle && firstType === 'folder');
-            setDisplay(previewBtn, isSingle && firstType === 'file');
-            setDisplay(editBtn, isSingle && firstType === 'file'); 
-            setDisplay(downloadBtn, isSingle && firstType === 'file');
-            setDisplay(renameBtn, isSingle);
-            setDisplay(shareBtn, isSingle);
-            setDisplay(moveBtn, true); 
-            setDisplay(lockBtn, isSingle && firstType === 'folder');
-            if(deleteBtn) deleteBtn.innerHTML = '<i class="fas fa-trash-alt"></i> 删除';
+            
+            const setDisplay = (id, show) => {
+                const btn = document.getElementById(id);
+                if (btn) btn.style.display = show ? 'flex' : 'none';
+            };
+            
+            setDisplay('openBtn', isSingle && firstType === 'folder');
+            setDisplay('previewBtn', isSingle && firstType === 'file');
+            setDisplay('editBtn', isSingle && firstType === 'file'); 
+            setDisplay('downloadBtn', isSingle && firstType === 'file');
+            setDisplay('renameBtn', isSingle);
+            setDisplay('shareBtn', isSingle);
+            setDisplay('moveBtn', true); 
+            setDisplay('lockBtn', isSingle && firstType === 'folder');
+            
+            const delBtn = document.getElementById('deleteBtn');
+            if(delBtn) delBtn.innerHTML = '<i class="fas fa-trash-alt"></i> 删除';
         } else {
             globalActions.forEach(el => el.style.display = 'flex');
             itemActions.forEach(el => el.style.display = 'none');
@@ -328,24 +260,137 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function handleContextMenu(e, item) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const id = getItemId(item);
+        if (!selectedItems.has(id)) {
+            if (!isMultiSelectMode && !e.ctrlKey) {
+                selectedItems.clear();
+                document.querySelectorAll('.selected').forEach(x => x.classList.remove('selected'));
+            }
+            selectedItems.add(id);
+            const gridEl = document.querySelector(`.grid-item[data-id="${id}"]`);
+            if(gridEl) gridEl.classList.add('selected');
+            const listEl = document.querySelector(`.list-row[data-id="${id}"]`);
+            if(listEl) listEl.classList.add('selected');
+        }
+        
+        updateContextMenuState(true);
+        showContextMenu(e.clientX, e.clientY);
+    }
+
+    // 3. 渲染函数
+    function createGridItem(item) {
+        const div = document.createElement('div');
+        div.className = 'grid-item item-card';
+        if(isTrashMode) div.classList.add('deleted');
+        div.dataset.id = getItemId(item);
+        
+        div.onclick = (e) => handleItemClick(e, item, div);
+        div.oncontextmenu = (e) => handleContextMenu(e, item);
+        div.ondblclick = () => handleItemDblClick(item);
+
+        const iconClass = getIconClass(item);
+        const iconColor = item.type === 'folder' ? '#fbc02d' : '#007bff';
+
+        div.innerHTML = `
+            <div class="item-icon"><i class="${iconClass}" style="color: ${iconColor};"></i>${item.is_locked ? '<i class="fas fa-lock lock-badge"></i>' : ''}</div>
+            <div class="item-info"><h5 title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h5></div>
+            ${isMultiSelectMode ? '<div class="select-checkbox"><i class="fas fa-check"></i></div>' : ''}
+        `;
+        if (selectedItems.has(getItemId(item))) div.classList.add('selected');
+        return div;
+    }
+
+    function createListItem(item) {
+        const div = document.createElement('div');
+        div.className = 'list-row list-item';
+        if(isTrashMode) div.classList.add('deleted');
+        div.dataset.id = getItemId(item);
+        
+        div.onclick = (e) => handleItemClick(e, item, div);
+        div.oncontextmenu = (e) => handleContextMenu(e, item);
+        div.ondblclick = () => handleItemDblClick(item);
+
+        const iconClass = getIconClass(item);
+        const dateStr = item.date ? new Date(item.date).toLocaleString() : (item.deleted_at ? new Date(item.deleted_at).toLocaleString() : '-');
+        const sizeStr = item.size !== undefined ? formatSize(item.size) : '-';
+
+        div.innerHTML = `
+            <div class="list-icon"><i class="${iconClass}" style="color: ${item.type === 'folder' ? '#fbc02d' : '#555'}"></i></div>
+            <div class="list-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
+            <div class="list-size">${sizeStr}</div>
+            <div class="list-date">${dateStr}</div>
+        `;
+        if (selectedItems.has(getItemId(item))) div.classList.add('selected');
+        return div;
+    }
+
+    function renderItems(itemsToRender) {
+        if(itemGrid) itemGrid.innerHTML = '';
+        if(itemListBody) itemListBody.innerHTML = '';
+        if (itemsToRender.length === 0) {
+            if(itemGrid) itemGrid.innerHTML = '<div class="empty-folder" style="text-align:center; padding:50px; color:#999;"><i class="fas fa-folder-open" style="font-size:48px; margin-bottom:10px;"></i><p>此位置为空</p></div>';
+            if(itemListBody) itemListBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#999;">为空</td></tr>`;
+            return;
+        }
+        itemsToRender.forEach(item => {
+            if(itemGrid) itemGrid.appendChild(createGridItem(item));
+            if(itemListBody) itemListBody.appendChild(createListItem(item));
+        });
+    }
+
+    // 4. 其他逻辑函数
+    function updateFolderSelectForUpload(folders) {
+        if(!folderSelect) return;
+        folderSelect.innerHTML = `<option value="${currentFolderId}">当前文件夹</option>`;
+        items.forEach(item => {
+            if(item.type === 'folder') {
+                const op = document.createElement('option');
+                op.value = item.encrypted_id;
+                op.textContent = item.name;
+                folderSelect.appendChild(op);
+            }
+        });
+    }
+
+    function renderBreadcrumb() {
+        if(isTrashMode) return; 
+        if(!breadcrumb) return;
+        breadcrumb.innerHTML = '';
+        const rootLi = document.createElement('a');
+        rootLi.href = '#';
+        rootLi.innerHTML = '<i class="fas fa-home"></i> 首页';
+        rootLi.onclick = (e) => { e.preventDefault(); if(currentPath.length > 0) loadFolder(currentPath[0].encrypted_id); };
+        breadcrumb.appendChild(rootLi);
+        currentPath.forEach((folder, index) => {
+            const sep = document.createElement('span');
+            sep.className = 'separator'; sep.textContent = '/';
+            breadcrumb.appendChild(sep);
+            const a = document.createElement('a');
+            a.textContent = folder.name;
+            if (index === currentPath.length - 1) { a.classList.add('active'); } 
+            else { a.href = '#'; a.onclick = (e) => { e.preventDefault(); loadFolder(folder.encrypted_id); }; }
+            breadcrumb.appendChild(a);
+        });
+    }
+
     async function loadFolder(encryptedId) {
         if (!encryptedId && !isTrashMode) return;
-        
         isTrashMode = false;
         if(trashBanner) trashBanner.style.display = 'none';
         selectedItems.clear();
         updateContextMenuState(false);
-        
         try {
             const res = await axios.get(`/api/folder/${encryptedId}?t=${Date.now()}`);
             const data = res.data;
             items = [...data.contents.folders, ...data.contents.files];
             currentPath = data.path;
-            
-            renderBreadcrumb(); // 调用已定义的函数
+            renderBreadcrumb();
             renderItems(items);
             updateFolderSelectForUpload(data.contents.folders);
-            
             const newUrl = `/view/${encryptedId}`;
             if (window.location.pathname !== newUrl) {
                 window.history.pushState({ id: encryptedId }, '', newUrl);
@@ -360,10 +405,10 @@ document.addEventListener('DOMContentLoaded', () => {
                  return;
             }
             if(itemGrid) itemGrid.innerHTML = `<div class="error-msg" style="text-align:center; padding:20px; color:#dc3545;">加载失败: ${msg}</div>`;
-            if(itemListBody) itemListBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#dc3545;">加载失败: ${msg}</td></tr>`;
         }
     }
 
+    // --- 缺失函数补全 ---
     async function loadTrash() {
         isTrashMode = true;
         currentFolderId = null;
@@ -371,14 +416,12 @@ document.addEventListener('DOMContentLoaded', () => {
         updateContextMenuState(false);
         if(trashBanner) trashBanner.style.display = 'flex';
         
-        if(breadcrumb) {
-            breadcrumb.innerHTML = `
-                <span><i class="fas fa-trash-restore"></i> 回收站</span>
-                <a href="#" id="exitTrashLink" style="margin-left:15px; font-size:0.9rem; color:#007bff; text-decoration:none; cursor:pointer;">
-                    <i class="fas fa-sign-out-alt"></i> 退出回收站
-                </a>
-            `;
-        }
+        breadcrumb.innerHTML = `
+            <span><i class="fas fa-trash-restore"></i> 回收站</span>
+            <a href="#" id="exitTrashLink" style="margin-left:15px; font-size:0.9rem; color:#007bff; text-decoration:none; cursor:pointer;">
+                <i class="fas fa-sign-out-alt"></i> 退出回收站
+            </a>
+        `;
         
         setTimeout(() => {
             const exitLink = document.getElementById('exitTrashLink');
@@ -398,42 +441,6 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('加载回收站失败: ' + (e.response?.data?.message || e.message));
         }
     }
-
-    async function updateQuota() {
-        try {
-            const res = await axios.get('/api/user/quota');
-            const { used, max } = res.data;
-            if(quotaUsedEl) quotaUsedEl.textContent = formatSize(used);
-            const maxVal = parseInt(max);
-            const isUnlimited = maxVal === 0;
-            if(quotaMaxEl) quotaMaxEl.textContent = isUnlimited ? '无限' : formatSize(maxVal);
-            if(quotaBar) {
-                if (!isUnlimited && maxVal > 0) {
-                    const percent = Math.min(100, Math.round((used / maxVal) * 100));
-                    quotaBar.style.width = `${percent}%`;
-                    if (percent > 90) quotaBar.style.backgroundColor = '#dc3545';
-                    else if (percent > 70) quotaBar.style.backgroundColor = '#ffc107';
-                    else quotaBar.style.backgroundColor = '#28a745';
-                } else {
-                    quotaBar.style.width = '0%';
-                }
-            }
-        } catch (error) {}
-    }
-
-    function showContextMenu(x, y) {
-        if(!contextMenu) return;
-        const menuWidth = 200; 
-        const menuHeight = isTrashMode ? 50 : 350;
-        if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
-        if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
-        contextMenu.style.top = `${y}px`;
-        contextMenu.style.left = `${x}px`;
-        contextMenu.style.display = 'flex';
-        document.addEventListener('click', () => contextMenu.style.display = 'none', { once: true });
-    }
-
-    function handleContextMenu(e, item) {}
 
     function handleItemClick(e, item, el) {
         const id = getItemId(item);
@@ -460,291 +467,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function updateViewModeUI() {
-        if(!itemGrid || !itemListView) return;
-        if (viewMode === 'grid') {
-            itemGrid.style.display = 'grid';
-            itemListView.style.display = 'none';
-            if(viewSwitchBtn) viewSwitchBtn.innerHTML = '<i class="fas fa-list"></i>';
-        } else {
-            itemGrid.style.display = 'none';
-            itemListView.style.display = 'block';
-            if(viewSwitchBtn) viewSwitchBtn.innerHTML = '<i class="fas fa-th-large"></i>';
-        }
-    }
+    // --- 事件绑定区 (所有函数已就绪) ---
 
-    function showConflictModal(fileName) {
-        return new Promise((resolve) => {
-            conflictMessage.textContent = `目标位置已存在文件: "${fileName}"`;
-            conflictModal.style.display = 'block';
-            applyToAllCheckbox.checked = false; 
-
-            const cleanup = () => {
-                conflictModal.style.display = 'none';
-                conflictRenameBtn.onclick = null;
-                conflictOverwriteBtn.onclick = null;
-                conflictSkipBtn.onclick = null;
-                conflictCancelBtn.onclick = null;
-            };
-
-            const handleChoice = (choice) => {
-                const applyToAll = applyToAllCheckbox.checked;
-                cleanup();
-                resolve({ choice, applyToAll });
-            };
-
-            conflictRenameBtn.onclick = () => handleChoice('rename');
-            conflictOverwriteBtn.onclick = () => handleChoice('overwrite');
-            conflictSkipBtn.onclick = () => handleChoice('skip');
-            conflictCancelBtn.onclick = () => handleChoice('cancel');
+    // 背景右键
+    const mainContent = document.querySelector('.main-content');
+    if (mainContent) {
+        mainContent.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            selectedItems.clear();
+            document.querySelectorAll('.selected').forEach(x => x.classList.remove('selected'));
+            updateContextMenuState(false);
+            showContextMenu(e.clientX, e.clientY);
         });
     }
 
-    async function loadFolderTree() {
-        if(folderTree) folderTree.innerHTML = '<div style="padding:10px;color:#666;">加载中...</div>';
-        try {
-            const res = await axios.get('/api/folders');
-            renderFolderTree(res.data);
-        } catch (e) {
-            if(folderTree) folderTree.innerHTML = `<div style="color:red;padding:10px;">加载失败: ${e.message}</div>`;
-        }
-    }
-
-    function renderFolderTree(folders) {
-        const movingFolderIds = new Set();
-        selectedItems.forEach(itemStr => {
-            const [type, id] = parseItemId(itemStr);
-            if (type === 'folder') {
-                const matched = folders.find(f => f.encrypted_id === id || f.id == id);
-                if(matched) movingFolderIds.add(matched.id);
-            }
-        });
-
-        const map = {};
-        let root = null;
-        folders.forEach(f => { f.children = []; map[f.id] = f; });
-        folders.forEach(f => {
-            if (f.parent_id && map[f.parent_id]) map[f.parent_id].children.push(f);
-            else if(!root) root = f; 
-        });
-        if (!root && folders.length > 0) root = folders[0]; 
-
-        folderTree.innerHTML = '';
-        if (root) folderTree.appendChild(createFolderNode(root, movingFolderIds));
-        else folderTree.innerHTML = '<div style="padding:10px;">没有文件夹</div>';
-    }
-
-    function createFolderNode(folder, movingIds) {
-        const container = document.createElement('div');
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'folder-item';
-        const isSelf = movingIds.has(folder.id);
-        if (isSelf) {
-            itemDiv.style.color = '#999';
-            itemDiv.style.cursor = 'not-allowed';
-            itemDiv.innerHTML = `<i class="fas fa-folder" style="margin-right:5px;"></i> ${escapeHtml(folder.name)} (当前)`;
-        } else {
-            itemDiv.innerHTML = `<i class="fas fa-folder" style="margin-right:5px;"></i> ${escapeHtml(folder.name)}`;
-            itemDiv.onclick = () => {
-                document.querySelectorAll('.folder-item').forEach(el => el.classList.remove('selected'));
-                itemDiv.classList.add('selected');
-                selectedMoveTargetId = folder.encrypted_id;
-                confirmMoveBtn.disabled = false;
-            };
-        }
-        container.appendChild(itemDiv);
-        if (folder.children && folder.children.length > 0) {
-            const childrenContainer = document.createElement('div');
-            childrenContainer.style.paddingLeft = '20px';
-            folder.children.forEach(child => {
-                const childNode = createFolderNode(child, movingIds);
-                if(isSelf) {
-                    const childItemDiv = childNode.querySelector('.folder-item');
-                    if(childItemDiv) {
-                        childItemDiv.style.color = '#999';
-                        childItemDiv.style.cursor = 'not-allowed';
-                        childItemDiv.onclick = null;
-                    }
-                }
-                childrenContainer.appendChild(childNode);
-            });
-            container.appendChild(childrenContainer);
-        }
-        return container;
-    }
-
-    async function getFolderContentsForUpload(encryptedId) {
-        try {
-            const res = await axios.get(`/api/folder/${encryptedId}?t=${Date.now()}`);
-            return res.data.contents;
-        } catch (e) { return { folders: [], files: [] }; }
-    }
-
-    async function ensureRemotePath(pathStr, rootId) {
-        if (!pathStr || pathStr === '' || pathStr === '.') return rootId;
-        const parts = pathStr.split('/').filter(p => p.trim() !== '');
-        let currentId = rootId;
-        for (const part of parts) {
-            const contents = await getFolderContentsForUpload(currentId);
-            const existingFolder = contents.folders.find(f => f.name === part);
-            if (existingFolder) {
-                currentId = existingFolder.encrypted_id;
-                TaskManager.show(`进入目录: ${part}`, 'fas fa-folder-open');
-            } else {
-                TaskManager.show(`创建目录: ${part}`, 'fas fa-folder-plus');
-                try {
-                    await axios.post('/api/folder/create', { name: part, parentId: currentId });
-                    const updatedContents = await getFolderContentsForUpload(currentId);
-                    const newFolder = updatedContents.folders.find(f => f.name === part);
-                    if (newFolder) currentId = newFolder.encrypted_id;
-                    else throw new Error(`无法获取新创建目录 ID: ${part}`);
-                } catch (e) { throw e; }
-            }
-        }
-        return currentId;
-    }
-
-    async function scanDataTransferItems(items) {
-        async function scanEntry(entry, path = '') {
-            if (entry.isFile) {
-                return new Promise((resolve) => { entry.file((file) => { resolve([{ file: file, path: path }]); }); });
-            } else if (entry.isDirectory) {
-                const dirReader = entry.createReader();
-                const currentPath = path ? `${path}/${entry.name}` : entry.name;
-                let entries = [];
-                const readAllEntries = async () => {
-                    return new Promise((resolve, reject) => {
-                        dirReader.readEntries(async (results) => {
-                            if (results.length === 0) resolve(entries);
-                            else { entries = entries.concat(results); await readAllEntries(); resolve(entries); }
-                        }, reject);
-                    });
-                };
-                await readAllEntries();
-                let files = [];
-                for (const subEntry of entries) {
-                    const subFiles = await scanEntry(subEntry, currentPath);
-                    files = files.concat(subFiles);
-                }
-                return files;
-            }
-            return [];
-        }
-        let files = [];
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            if (item.kind === 'file') {
-                const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : (item.getAsEntry ? item.getAsEntry() : null);
-                if (entry) {
-                    const entryFiles = await scanEntry(entry, '');
-                    files = files.concat(entryFiles);
-                } else {
-                    const file = item.getAsFile();
-                    if(file) files.push({ file: file, path: '' });
-                }
-            }
-        }
-        return files;
-    }
-
-    async function executeUpload(inputItems, targetEncryptedId) {
-        if (!inputItems || inputItems.length === 0) return alert('请选择至少一个文件');
-        const rootId = targetEncryptedId || currentFolderId;
-        let queue = [];
-        if (inputItems instanceof FileList) {
-            for(let i=0; i<inputItems.length; i++) queue.push({ file: inputItems[i], path: '' });
-        } else if (Array.isArray(inputItems)) {
-            queue = inputItems;
-        }
-        if (queue.length === 0) return;
-
-        if(uploadModal) {
-            uploadModal.style.display = 'block';
-            if(document.getElementById('uploadForm')) document.getElementById('uploadForm').style.display = 'none';
-        }
-        if(progressArea) progressArea.style.display = 'block';
-        TaskManager.show('准备上传...', 'fas fa-cloud-upload-alt');
-
-        conflictResolutionState.applyToAll = false;
-        conflictResolutionState.choice = null;
-
-        const totalBytes = queue.reduce((acc, item) => acc + item.file.size, 0);
-        let loadedBytesGlobal = 0;
-        let successCount = 0;
-        let failCount = 0;
-        const pathCache = {}; pathCache[''] = rootId;
-
-        for (let i = 0; i < queue.length; i++) {
-            const item = queue[i];
-            const file = item.file;
-            const relPath = item.path || '';
-            let targetFolderId = rootId;
-            const statusMsg = `[${i + 1}/${queue.length}] 上传: ${file.name}`;
-            if(uploadStatusText) uploadStatusText.textContent = statusMsg;
-            TaskManager.show(statusMsg, 'fas fa-file-upload');
-
-            try {
-                if (pathCache[relPath]) targetFolderId = pathCache[relPath];
-                else { targetFolderId = await ensureRemotePath(relPath, rootId); pathCache[relPath] = targetFolderId; }
-
-                const contents = await getFolderContentsForUpload(targetFolderId);
-                const existingFile = contents.files.find(f => f.fileName === file.name);
-                let conflictMode = 'rename'; 
-
-                if (existingFile) {
-                    if (conflictResolutionState.applyToAll && conflictResolutionState.choice) {
-                        conflictMode = conflictResolutionState.choice;
-                    } else {
-                        const result = await showConflictModal(file.name);
-                        conflictMode = result.choice;
-                        if (result.applyToAll) {
-                            conflictResolutionState.applyToAll = true;
-                            conflictResolutionState.choice = conflictMode;
-                        }
-                    }
-                    if (conflictMode === 'cancel') { failCount += (queue.length - i); break; }
-                    if (conflictMode === 'skip') continue; 
-                }
-
-                const formData = new FormData();
-                formData.append('files', file, file.name);
-
-                let currentFileLoaded = 0;
-                await axios.post(`/upload?folderId=${targetFolderId || ''}&conflictMode=${conflictMode}`, formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' },
-                    onUploadProgress: (p) => {
-                        const diff = p.loaded - currentFileLoaded;
-                        currentFileLoaded = p.loaded;
-                        loadedBytesGlobal += diff;
-                        if (totalBytes > 0 && progressBar) {
-                            const percent = Math.min(100, Math.round((loadedBytesGlobal * 100) / totalBytes));
-                            progressBar.style.width = percent + '%';
-                            progressBar.textContent = percent + '%';
-                            TaskManager.update(percent, statusMsg); 
-                        }
-                    }
-                });
-                successCount++;
-            } catch (error) { failCount++; }
-        }
-
-        let resultMsg = `上传结束。\n成功: ${successCount}\n失败: ${failCount}`;
-        if (failCount > 0) alert(resultMsg);
-        TaskManager.success('所有文件上传完成');
-
-        setTimeout(() => {
-            if(uploadModal) uploadModal.style.display = 'none';
-            if(document.getElementById('uploadForm')) document.getElementById('uploadForm').style.display = 'block';
-            if(uploadForm) uploadForm.reset();
-            if(progressArea) progressArea.style.display = 'none';
-            if(uploadStatusText) uploadStatusText.textContent = '';
-            loadFolder(currentFolderId);
-            updateQuota();
-        }, 1000);
-    }
-
-    // --- 2.4 事件绑定 ---
-    
     if(trashBtn) trashBtn.addEventListener('click', loadTrash);
     if(emptyTrashBtn) emptyTrashBtn.addEventListener('click', async () => {
         if(confirm('确定要清空回收站吗？此操作无法撤销。')) {
@@ -981,27 +717,348 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // --- 2.5 拖拽事件 ---
-    let dragCounter = 0;
-    window.addEventListener('dragenter', (e) => { e.preventDefault(); dragCounter++; if(dropZoneOverlay) dropZoneOverlay.style.display = 'flex'; });
-    window.addEventListener('dragleave', (e) => { e.preventDefault(); dragCounter--; if (dragCounter === 0 && dropZoneOverlay) dropZoneOverlay.style.display = 'none'; });
-    window.addEventListener('dragover', (e) => { e.preventDefault(); });
-    window.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        dragCounter = 0;
-        if(dropZoneOverlay) dropZoneOverlay.style.display = 'none';
+    // 冲突解决
+    function showConflictModal(fileName) {
+        return new Promise((resolve) => {
+            conflictMessage.textContent = `目标位置已存在文件: "${fileName}"`;
+            conflictModal.style.display = 'block';
+            applyToAllCheckbox.checked = false; 
+
+            const cleanup = () => {
+                conflictModal.style.display = 'none';
+                conflictRenameBtn.onclick = null;
+                conflictOverwriteBtn.onclick = null;
+                conflictSkipBtn.onclick = null;
+                conflictCancelBtn.onclick = null;
+            };
+
+            const handleChoice = (choice) => {
+                const applyToAll = applyToAllCheckbox.checked;
+                cleanup();
+                resolve({ choice, applyToAll });
+            };
+
+            conflictRenameBtn.onclick = () => handleChoice('rename');
+            conflictOverwriteBtn.onclick = () => handleChoice('overwrite');
+            conflictSkipBtn.onclick = () => handleChoice('skip');
+            conflictCancelBtn.onclick = () => handleChoice('cancel');
+        });
+    }
+
+    // 移动功能
+    if (moveBtn) {
+        moveBtn.addEventListener('click', () => {
+            if (selectedItems.size === 0) return;
+            selectedMoveTargetId = null;
+            confirmMoveBtn.disabled = true;
+            moveModal.style.display = 'block';
+            loadFolderTree();
+        });
+    }
+    
+    if(cancelMoveBtn) cancelMoveBtn.addEventListener('click', () => moveModal.style.display = 'none');
+
+    async function loadFolderTree() {
+        if(folderTree) folderTree.innerHTML = '<div style="padding:10px;color:#666;">加载中...</div>';
+        try {
+            const res = await axios.get('/api/folders');
+            renderFolderTree(res.data);
+        } catch (e) {
+            if(folderTree) folderTree.innerHTML = `<div style="color:red;padding:10px;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    function renderFolderTree(folders) {
+        const movingFolderIds = new Set();
+        selectedItems.forEach(itemStr => {
+            const [type, id] = parseItemId(itemStr);
+            if (type === 'folder') {
+                const matched = folders.find(f => f.encrypted_id === id || f.id == id);
+                if(matched) movingFolderIds.add(matched.id);
+            }
+        });
+
+        const map = {};
+        let root = null;
+        folders.forEach(f => { f.children = []; map[f.id] = f; });
+        folders.forEach(f => {
+            if (f.parent_id && map[f.parent_id]) map[f.parent_id].children.push(f);
+            else if(!root) root = f; 
+        });
+        if (!root && folders.length > 0) root = folders[0]; 
+
+        folderTree.innerHTML = '';
+        if (root) folderTree.appendChild(createFolderNode(root, movingFolderIds));
+        else folderTree.innerHTML = '<div style="padding:10px;">没有文件夹</div>';
+    }
+
+    function createFolderNode(folder, movingIds) {
+        const container = document.createElement('div');
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'folder-item';
+        const isSelf = movingIds.has(folder.id);
+        if (isSelf) {
+            itemDiv.style.color = '#999';
+            itemDiv.style.cursor = 'not-allowed';
+            itemDiv.innerHTML = `<i class="fas fa-folder" style="margin-right:5px;"></i> ${escapeHtml(folder.name)} (当前)`;
+        } else {
+            itemDiv.innerHTML = `<i class="fas fa-folder" style="margin-right:5px;"></i> ${escapeHtml(folder.name)}`;
+            itemDiv.onclick = () => {
+                document.querySelectorAll('.folder-item').forEach(el => el.classList.remove('selected'));
+                itemDiv.classList.add('selected');
+                selectedMoveTargetId = folder.encrypted_id;
+                confirmMoveBtn.disabled = false;
+            };
+        }
+        container.appendChild(itemDiv);
+        if (folder.children && folder.children.length > 0) {
+            const childrenContainer = document.createElement('div');
+            childrenContainer.style.paddingLeft = '20px';
+            folder.children.forEach(child => {
+                const childNode = createFolderNode(child, movingIds);
+                if(isSelf) {
+                    const childItemDiv = childNode.querySelector('.folder-item');
+                    if(childItemDiv) {
+                        childItemDiv.style.color = '#999';
+                        childItemDiv.style.cursor = 'not-allowed';
+                        childItemDiv.onclick = null;
+                    }
+                }
+                childrenContainer.appendChild(childNode);
+            });
+            container.appendChild(childrenContainer);
+        }
+        return container;
+    }
+
+    if(confirmMoveBtn) confirmMoveBtn.addEventListener('click', async () => {
+        if (!selectedMoveTargetId) return;
         
-        const items = e.dataTransfer.items;
-        if (items && items.length > 0) {
-            const files = await scanDataTransferItems(items);
-            if (files.length > 0) await executeUpload(files, currentFolderId);
-        } else if (e.dataTransfer.files.length > 0) {
-            const list = Array.from(e.dataTransfer.files).map(f => ({ file: f, path: '' }));
-            await executeUpload(list, currentFolderId);
+        const files = []; const folders = [];
+        const fileNames = []; 
+        selectedItems.forEach(id => { 
+            const [type, realId] = parseItemId(id); 
+            const originalItem = items.find(i => getItemId(i) === id);
+            if (originalItem) {
+                if (type === 'file') { files.push(realId); fileNames.push(originalItem.name); } 
+                else { folders.push(realId); }
+            }
+        });
+        
+        try {
+            confirmMoveBtn.textContent = '正在检查冲突...';
+            confirmMoveBtn.disabled = true;
+            
+            const targetRes = await axios.get(`/api/folder/${selectedMoveTargetId}?t=${Date.now()}`);
+            const targetContents = targetRes.data.contents;
+            const targetFileNames = new Set(targetContents.files.map(f => f.fileName));
+            const conflicts = fileNames.filter(name => targetFileNames.has(name));
+            
+            let conflictMode = 'rename'; 
+            
+            if (conflicts.length > 0) {
+                const result = await showConflictModal(`检测到 ${conflicts.length} 个同名文件 (例如: ${conflicts[0]})`);
+                if (result.choice === 'cancel') {
+                    confirmMoveBtn.textContent = '确定移动';
+                    confirmMoveBtn.disabled = false;
+                    moveModal.style.display = 'none';
+                    return;
+                }
+                conflictMode = result.choice;
+            }
+
+            confirmMoveBtn.textContent = '移动中...';
+            TaskManager.show('正在移动...', 'fas fa-arrows-alt'); 
+            
+            await axios.post('/api/move', { 
+                files, folders, targetFolderId: selectedMoveTargetId, conflictMode: conflictMode 
+            });
+            
+            TaskManager.success('移动完成');
+            moveModal.style.display = 'none';
+            selectedItems.clear();
+            loadFolder(currentFolderId);
+        } catch (e) {
+            alert('移动失败: ' + (e.response?.data?.message || e.message));
+            TaskManager.error('移动失败');
+        } finally {
+            confirmMoveBtn.textContent = '确定移动';
+            confirmMoveBtn.disabled = false;
         }
     });
 
-    // --- 2.6 UI 绑定 ---
+    // 上传功能
+    async function getFolderContentsForUpload(encryptedId) {
+        try {
+            const res = await axios.get(`/api/folder/${encryptedId}?t=${Date.now()}`);
+            return res.data.contents;
+        } catch (e) { return { folders: [], files: [] }; }
+    }
+
+    async function ensureRemotePath(pathStr, rootId) {
+        if (!pathStr || pathStr === '' || pathStr === '.') return rootId;
+        const parts = pathStr.split('/').filter(p => p.trim() !== '');
+        let currentId = rootId;
+        for (const part of parts) {
+            const contents = await getFolderContentsForUpload(currentId);
+            const existingFolder = contents.folders.find(f => f.name === part);
+            if (existingFolder) {
+                currentId = existingFolder.encrypted_id;
+                TaskManager.show(`进入目录: ${part}`, 'fas fa-folder-open');
+            } else {
+                TaskManager.show(`创建目录: ${part}`, 'fas fa-folder-plus');
+                try {
+                    await axios.post('/api/folder/create', { name: part, parentId: currentId });
+                    const updatedContents = await getFolderContentsForUpload(currentId);
+                    const newFolder = updatedContents.folders.find(f => f.name === part);
+                    if (newFolder) currentId = newFolder.encrypted_id;
+                    else throw new Error(`无法获取新创建目录 ID: ${part}`);
+                } catch (e) { throw e; }
+            }
+        }
+        return currentId;
+    }
+
+    async function scanDataTransferItems(items) {
+        async function scanEntry(entry, path = '') {
+            if (entry.isFile) {
+                return new Promise((resolve) => { entry.file((file) => { resolve([{ file: file, path: path }]); }); });
+            } else if (entry.isDirectory) {
+                const dirReader = entry.createReader();
+                const currentPath = path ? `${path}/${entry.name}` : entry.name;
+                let entries = [];
+                const readAllEntries = async () => {
+                    return new Promise((resolve, reject) => {
+                        dirReader.readEntries(async (results) => {
+                            if (results.length === 0) resolve(entries);
+                            else { entries = entries.concat(results); await readAllEntries(); resolve(entries); }
+                        }, reject);
+                    });
+                };
+                await readAllEntries();
+                let files = [];
+                for (const subEntry of entries) {
+                    const subFiles = await scanEntry(subEntry, currentPath);
+                    files = files.concat(subFiles);
+                }
+                return files;
+            }
+            return [];
+        }
+        let files = [];
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.kind === 'file') {
+                const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : (item.getAsEntry ? item.getAsEntry() : null);
+                if (entry) {
+                    const entryFiles = await scanEntry(entry, '');
+                    files = files.concat(entryFiles);
+                } else {
+                    const file = item.getAsFile();
+                    if(file) files.push({ file: file, path: '' });
+                }
+            }
+        }
+        return files;
+    }
+
+    async function executeUpload(inputItems, targetEncryptedId) {
+        if (!inputItems || inputItems.length === 0) return alert('请选择至少一个文件');
+        const rootId = targetEncryptedId || currentFolderId;
+        let queue = [];
+        if (inputItems instanceof FileList) {
+            for(let i=0; i<inputItems.length; i++) queue.push({ file: inputItems[i], path: '' });
+        } else if (Array.isArray(inputItems)) {
+            queue = inputItems;
+        }
+        if (queue.length === 0) return;
+
+        if(uploadModal) {
+            uploadModal.style.display = 'block';
+            if(document.getElementById('uploadForm')) document.getElementById('uploadForm').style.display = 'none';
+        }
+        if(progressArea) progressArea.style.display = 'block';
+        TaskManager.show('准备上传...', 'fas fa-cloud-upload-alt');
+
+        conflictResolutionState.applyToAll = false;
+        conflictResolutionState.choice = null;
+
+        const totalBytes = queue.reduce((acc, item) => acc + item.file.size, 0);
+        let loadedBytesGlobal = 0;
+        let successCount = 0;
+        let failCount = 0;
+        const pathCache = {}; pathCache[''] = rootId;
+
+        for (let i = 0; i < queue.length; i++) {
+            const item = queue[i];
+            const file = item.file;
+            const relPath = item.path || '';
+            let targetFolderId = rootId;
+            const statusMsg = `[${i + 1}/${queue.length}] 上传: ${file.name}`;
+            if(uploadStatusText) uploadStatusText.textContent = statusMsg;
+            TaskManager.show(statusMsg, 'fas fa-file-upload');
+
+            try {
+                if (pathCache[relPath]) targetFolderId = pathCache[relPath];
+                else { targetFolderId = await ensureRemotePath(relPath, rootId); pathCache[relPath] = targetFolderId; }
+
+                const contents = await getFolderContentsForUpload(targetFolderId);
+                const existingFile = contents.files.find(f => f.fileName === file.name);
+                let conflictMode = 'rename'; 
+
+                if (existingFile) {
+                    if (conflictResolutionState.applyToAll && conflictResolutionState.choice) {
+                        conflictMode = conflictResolutionState.choice;
+                    } else {
+                        const result = await showConflictModal(file.name);
+                        conflictMode = result.choice;
+                        if (result.applyToAll) {
+                            conflictResolutionState.applyToAll = true;
+                            conflictResolutionState.choice = conflictMode;
+                        }
+                    }
+                    if (conflictMode === 'cancel') { failCount += (queue.length - i); break; }
+                    if (conflictMode === 'skip') continue; 
+                }
+
+                const formData = new FormData();
+                formData.append('files', file, file.name);
+
+                let currentFileLoaded = 0;
+                await axios.post(`/upload?folderId=${targetFolderId || ''}&conflictMode=${conflictMode}`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                    onUploadProgress: (p) => {
+                        const diff = p.loaded - currentFileLoaded;
+                        currentFileLoaded = p.loaded;
+                        loadedBytesGlobal += diff;
+                        if (totalBytes > 0 && progressBar) {
+                            const percent = Math.min(100, Math.round((loadedBytesGlobal * 100) / totalBytes));
+                            progressBar.style.width = percent + '%';
+                            progressBar.textContent = percent + '%';
+                            TaskManager.update(percent, statusMsg); 
+                        }
+                    }
+                });
+                successCount++;
+            } catch (error) { failCount++; }
+        }
+
+        let resultMsg = `上传结束。\n成功: ${successCount}\n失败: ${failCount}`;
+        if (failCount > 0) alert(resultMsg);
+        TaskManager.success('所有文件上传完成');
+
+        setTimeout(() => {
+            if(uploadModal) uploadModal.style.display = 'none';
+            if(document.getElementById('uploadForm')) document.getElementById('uploadForm').style.display = 'block';
+            if(uploadForm) uploadForm.reset();
+            if(progressArea) progressArea.style.display = 'none';
+            if(uploadStatusText) uploadStatusText.textContent = '';
+            loadFolder(currentFolderId);
+            updateQuota();
+        }, 1000);
+    }
+
+    // 绑定上传相关事件
     if(document.getElementById('showUploadModalBtn')) {
         document.getElementById('showUploadModalBtn').addEventListener('click', () => {
             if(uploadModal) uploadModal.style.display = 'block';
@@ -1028,14 +1085,46 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- 2.7 最终初始化调用 (确保所有函数已定义) ---
+    // 拖拽逻辑
+    let dragCounter = 0;
+    window.addEventListener('dragenter', (e) => { e.preventDefault(); dragCounter++; if(dropZoneOverlay) dropZoneOverlay.style.display = 'flex'; });
+    window.addEventListener('dragleave', (e) => { e.preventDefault(); dragCounter--; if (dragCounter === 0 && dropZoneOverlay) dropZoneOverlay.style.display = 'none'; });
+    window.addEventListener('dragover', (e) => { e.preventDefault(); });
+    window.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        if(dropZoneOverlay) dropZoneOverlay.style.display = 'none';
+        
+        const items = e.dataTransfer.items;
+        if (items && items.length > 0) {
+            const files = await scanDataTransferItems(items);
+            if (files.length > 0) await executeUpload(files, currentFolderId);
+        } else if (e.dataTransfer.files.length > 0) {
+            const list = Array.from(e.dataTransfer.files).map(f => ({ file: f, path: '' }));
+            await executeUpload(list, currentFolderId);
+        }
+    });
+
+    function updateViewModeUI() {
+        if(!itemGrid || !itemListView) return;
+        if (viewMode === 'grid') {
+            itemGrid.style.display = 'grid';
+            itemListView.style.display = 'none';
+            if(viewSwitchBtn) viewSwitchBtn.innerHTML = '<i class="fas fa-list"></i>';
+        } else {
+            itemGrid.style.display = 'none';
+            itemListView.style.display = 'block';
+            if(viewSwitchBtn) viewSwitchBtn.innerHTML = '<i class="fas fa-th-large"></i>';
+        }
+    }
+
+    // --- 初始化调用 (放在最后) ---
     const initPath = window.location.pathname.split('/');
     if (initPath[1] === 'view' && initPath[2] && initPath[2] !== 'null') {
         currentFolderId = initPath[2];
     }
     
-    // 强制先更新一次状态
     updateViewModeUI();
-    // 启动加载
     loadFolder(currentFolderId);
+    updateQuota();
 });
