@@ -9,6 +9,8 @@
     --danger-color: #dc3545;
     --success-color: #28a745;
     --warning-color: #ffc107;
+    --header-height: 60px;
+    --footer-height: 36px;
 }
 
 body {
@@ -20,17 +22,19 @@ body {
     display: flex;
     flex-direction: column;
     height: 100vh;
+    overflow: hidden; /* 防止整個頁面滾動，內容區域單獨滾動 */
 }
 
-/* --- Navbar --- */
+/* --- 1. Navbar (頂部導航) --- */
 .navbar {
     background-color: #fff;
     padding: 0 20px;
-    height: 60px;
+    height: var(--header-height);
     display: flex;
     align-items: center;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     z-index: 100;
+    flex-shrink: 0;
 }
 
 .brand {
@@ -61,6 +65,7 @@ body {
     flex: 1;
     outline: none;
     padding: 5px;
+    font-size: 0.9rem;
 }
 
 #searchForm button {
@@ -92,7 +97,7 @@ body {
     color: var(--primary-color);
 }
 
-/* --- Trash Banner --- */
+/* --- 2. Trash Banner (回收站橫幅) --- */
 .trash-banner {
     background-color: #fff3cd;
     color: #856404;
@@ -102,6 +107,7 @@ body {
     justify-content: space-between;
     border-bottom: 1px solid #ffeeba;
     animation: slideDown 0.3s ease;
+    flex-shrink: 0;
 }
 
 @keyframes slideDown {
@@ -121,12 +127,13 @@ body {
     gap: 10px;
 }
 
-/* --- Toolbar --- */
+/* --- 3. Toolbar (工具欄) --- */
 .toolbar {
     padding: 15px 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-shrink: 0;
 }
 
 .left-tools, .right-tools {
@@ -146,6 +153,7 @@ body {
     align-items: center;
     gap: 6px;
     transition: all 0.2s;
+    text-decoration: none;
 }
 
 .btn:hover:not(:disabled) {
@@ -188,13 +196,14 @@ body {
     background-color: #218838;
 }
 
-/* --- Breadcrumb --- */
+/* --- 4. Breadcrumb (麵包屑) --- */
 .breadcrumb-container {
     padding: 0 20px;
     margin-bottom: 10px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-shrink: 0;
 }
 
 #breadcrumb {
@@ -205,6 +214,7 @@ body {
     align-items: center;
     font-size: 0.95rem;
     color: #666;
+    flex-wrap: wrap;
 }
 
 #breadcrumb a {
@@ -212,6 +222,7 @@ body {
     color: #555;
     padding: 4px 8px;
     border-radius: 4px;
+    transition: background 0.2s;
 }
 
 #breadcrumb a:hover {
@@ -238,10 +249,10 @@ body {
     border-radius: 12px;
 }
 
-/* --- Main Content --- */
+/* --- 5. Main Content (主內容區) --- */
 .main-content {
     flex: 1;
-    overflow-y: auto;
+    overflow-y: auto; /* 只有這部分滾動 */
     padding: 0 20px 20px;
     position: relative;
 }
@@ -251,6 +262,7 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: 15px;
+    padding-bottom: 20px;
 }
 
 .grid-item {
@@ -262,10 +274,12 @@ body {
     cursor: pointer;
     transition: all 0.2s;
     position: relative;
+    user-select: none;
 }
 
 .grid-item:hover {
-    background-color: #f1f3f4;
+    background-color: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
 .grid-item.selected {
@@ -274,10 +288,9 @@ body {
     color: var(--primary-color);
 }
 
-/* Deleted Item Style */
 .grid-item.deleted, .list-item.deleted {
     opacity: 0.7;
-    filter: grayscale(0.5);
+    filter: grayscale(0.8);
 }
 
 .item-icon {
@@ -295,6 +308,7 @@ body {
     background: #fff;
     border-radius: 50%;
     padding: 2px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
 .item-info h5 {
@@ -304,14 +318,15 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    line-height: 1.4;
 }
 
 .select-checkbox {
     position: absolute;
     top: 5px;
     left: 5px;
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     border: 2px solid #ccc;
     border-radius: 4px;
     background: #fff;
@@ -335,6 +350,7 @@ body {
     background: #fff;
     border-radius: 8px;
     overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .list-view th {
@@ -348,8 +364,8 @@ body {
 }
 
 .list-row {
-    display: table-row;
     cursor: pointer;
+    transition: background 0.1s;
 }
 
 .list-row:hover {
@@ -360,8 +376,7 @@ body {
     background-color: #e8f0fe;
 }
 
-.list-row > div, .list-row > td {
-    display: table-cell;
+.list-row td {
     padding: 10px 12px;
     border-bottom: 1px solid #eee;
     vertical-align: middle;
@@ -373,23 +388,26 @@ body {
     font-size: 1.2rem;
 }
 
-/* --- Status Bar --- */
+/* --- 6. Status Bar (底部狀態欄) --- */
 .status-bar {
     background: #fff;
     border-top: 1px solid var(--border-color);
-    padding: 0 20px;
-    height: 40px;
+    padding: 0 15px;
+    height: var(--footer-height);
     display: flex;
     align-items: center;
+    justify-content: space-between;
     font-size: 0.85rem;
     color: #666;
+    user-select: none;
+    flex-shrink: 0;
 }
 
 .quota-container {
     display: flex;
     align-items: center;
     gap: 10px;
-    width: 300px;
+    width: 250px;
 }
 
 .progress-track {
@@ -404,19 +422,66 @@ body {
     height: 100%;
     background: var(--primary-color);
     width: 0%;
-    transition: width 0.3s, background-color 0.3s;
+    transition: width 0.3s;
 }
 
-/* --- Context Menu --- */
+/* 右側工作狀態欄 */
+.task-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    max-width: 50%;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.task-status-bar.active {
+    opacity: 1;
+}
+
+.task-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.task-icon {
+    font-size: 14px;
+    display: inline-block;
+}
+
+.task-icon.spinning {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+.mini-progress-track {
+    width: 100px;
+    height: 4px;
+    background: #e9ecef;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.mini-progress-fill {
+    height: 100%;
+    background: #28a745;
+    width: 0%;
+    transition: width 0.2s linear;
+}
+
+/* --- 7. Context Menu (右鍵菜單) --- */
 .context-menu {
     position: fixed;
     background: #fff;
     border-radius: 6px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.15);
     padding: 5px 0;
     min-width: 180px;
     z-index: 1000;
     flex-direction: column;
+    border: 1px solid #eee;
 }
 
 .menu-item {
@@ -432,10 +497,12 @@ body {
     border: none;
     width: 100%;
     text-align: left;
+    box-sizing: border-box;
 }
 
 .menu-item:hover:not(:disabled) {
     background-color: #f1f3f4;
+    color: var(--primary-color);
 }
 
 .menu-item:disabled {
@@ -450,12 +517,13 @@ body {
 }
 
 .text-danger { color: var(--danger-color); }
+.text-danger:hover { background-color: #fff5f5; color: #c82333; }
 
-/* --- Modals --- */
+/* --- 8. Modals (模態框) --- */
 .modal {
     display: none;
     position: fixed;
-    z-index: 200;
+    z-index: 2000;
     left: 0;
     top: 0;
     width: 100%;
@@ -463,13 +531,14 @@ body {
     background-color: rgba(0,0,0,0.5);
     align-items: center;
     justify-content: center;
+    backdrop-filter: blur(2px);
 }
 
 .modal-content {
     background-color: #fff;
     padding: 25px;
     border-radius: 8px;
-    width: 100%;
+    width: 90%;
     max-width: 450px;
     box-shadow: 0 10px 25px rgba(0,0,0,0.2);
     position: relative;
@@ -477,6 +546,12 @@ body {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
 }
 
 .preview-content {
@@ -487,6 +562,7 @@ body {
     overflow: hidden;
     align-items: center;
     justify-content: center;
+    height: auto;
 }
 
 .close-button {
@@ -497,6 +573,7 @@ body {
     cursor: pointer;
     color: #999;
     line-height: 1;
+    z-index: 1;
 }
 
 .close-button:hover { color: #333; }
@@ -512,6 +589,11 @@ body {
     box-sizing: border-box;
 }
 
+.form-control:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
 .modal-actions {
     display: flex;
     justify-content: flex-end;
@@ -521,13 +603,14 @@ body {
 
 .full-width { width: 100%; }
 
-/* --- Folder Tree (Move Modal) --- */
+/* --- 9. Folder Tree (移動文件夾時的選擇樹) --- */
 .folder-tree-container {
     border: 1px solid #eee;
     max-height: 300px;
     overflow-y: auto;
     margin: 15px 0;
     border-radius: 4px;
+    padding: 5px;
 }
 
 .folder-item {
@@ -536,90 +619,57 @@ body {
     display: flex;
     align-items: center;
     font-size: 0.9rem;
+    border-radius: 4px;
 }
 
 .folder-item:hover { background-color: #f8f9fa; }
 .folder-item.selected { background-color: #e8f0fe; color: var(--primary-color); font-weight: 500; }
 
-/* --- Share Result --- */
+/* --- 10. Share Result (分享結果框) --- */
 .code-box {
     background: #f1f3f4;
-    padding: 10px;
+    padding: 12px;
     border-radius: 4px;
     font-family: monospace;
     word-break: break-all;
     border: 1px solid #ddd;
     margin: 10px 0;
     color: #333;
+    font-size: 0.9rem;
 }
 
-/* --- Drag Drop Overlay --- */
-.drop-overlay {
-    display: none;
-    position: fixed;
-    top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,123,255,0.9);
-    z-index: 1000;
-    color: #fff;
-    align-items: center;
-    justify-content: center;
-}
-
-.drop-message { text-align: center; }
-.drop-message i { font-size: 64px; margin-bottom: 20px; }
-
-/* --- No Preview --- */
-.no-preview {
-    text-align: center;
-    padding: 40px;
-    background: #fff;
-    border-radius: 8px;
-}
-
-.upload-link-btn {
-    display: inline-block;
-    margin-top: 10px;
-    padding: 8px 20px;
-    background: var(--primary-color);
-    color: white;
-    text-decoration: none;
-    border-radius: 4px;
-}
-/* --- 拖拽上传覆盖层样式 --- */
-
-/* 1. 隐形的全屏感应区：覆盖整个窗口，用于检测拖拽进入 */
+/* --- 11. Drag Drop Overlay (拖拽上傳遮罩) --- */
+/* 隱形的全屏感應區 */
 #dropZone {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 990; /* 只要比普通内容高即可，但要比 Overlay 低 */
-    display: none; /* JS 会在拖拽开始时控制它的显示 */
+    z-index: 990;
+    display: none;
 }
 
-/* 2. 视觉提示层：当拖拽进入感应区时显示 */
+/* 視覺提示層 */
 .drop-overlay {
-    display: none; /* 默认隐藏 */
+    display: none;
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 123, 255, 0.85); /* 蓝色半透明背景 */
-    z-index: 1000; /* 最顶层 */
+    background-color: rgba(0, 123, 255, 0.85);
+    z-index: 3000;
     color: #fff;
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    backdrop-filter: blur(2px); /* 磨砂玻璃效果 */
-    transition: opacity 0.2s ease;
+    backdrop-filter: blur(2px);
 }
 
-/* 提示文字和图标样式 */
 .drop-message {
     text-align: center;
-    pointer-events: none; /* 让鼠标事件穿透文字，直接触发父容器的 drop */
+    pointer-events: none;
 }
 
 .drop-message i {
@@ -635,7 +685,33 @@ body {
     letter-spacing: 1px;
 }
 
-/* 3. 防止浏览器默认行为的干扰样式 */
-body.dragging {
-    overflow: hidden; /* 拖拽时防止页面滚动 */
+/* --- 12. No Preview & Link Button --- */
+.no-preview {
+    text-align: center;
+    padding: 40px;
+    background: #fff;
+    border-radius: 8px;
+    color: #666;
+}
+
+.upload-link-btn {
+    display: inline-block;
+    margin-top: 15px;
+    padding: 10px 25px;
+    background: var(--primary-color);
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.upload-link-btn:hover {
+    background-color: var(--primary-hover);
+}
+
+/* Empty State */
+.empty-folder {
+    text-align: center;
+    padding: 60px;
+    color: #999;
 }
