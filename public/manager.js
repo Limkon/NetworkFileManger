@@ -401,7 +401,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const filename = prompt('请输入文件名 (例如: note.txt):', 'new_file.txt');
         if (!filename || !filename.trim()) return;
         const emptyFile = new File([""], filename.trim(), { type: "text/plain" });
-        await executeUpload([emptyFile], currentFolderId);
+        
+        // 包装成带 path 的对象
+        const fileObj = {
+            file: emptyFile,
+            path: '' // 根目录
+        };
+        await executeUpload([fileObj], currentFolderId);
     });
 
     editBtn.addEventListener('click', () => {
@@ -539,22 +545,85 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     // =================================================================================
-    // 9. 上传功能 (修改版：支持递归扫描文件夹，队列上传)
+    // 9. 上传功能 (增强版：支持递归目录创建)
     // =================================================================================
 
-    // 辅助函数：扫描 Entry (文件或文件夹)
-    async function scanEntry(entry) {
+    // 辅助函数：静默获取某文件夹的子内容，用于查找子文件夹 ID
+    async function getFolderContents(encryptedId) {
+        try {
+            const res = await axios.get(`/api/folder/${encryptedId}`);
+            return res.data.contents; // { folders: [], files: [] }
+        } catch (e) {
+            console.error('获取目录失败:', encryptedId, e);
+            return { folders: [], files: [] };
+        }
+    }
+
+    // 核心函数：根据相对路径，递归查找或创建文件夹，返回目标文件夹的 encryptedId
+    // pathStr: "SubFolder/Images", rootId: 当前所在目录ID
+    async function ensureRemotePath(pathStr, rootId) {
+        if (!pathStr || pathStr === '' || pathStr === '.') return rootId;
+        
+        const parts = pathStr.split('/').filter(p => p.trim() !== '');
+        let currentId = rootId;
+
+        // 缓存当前层级的内容，避免重复请求
+        // 简单起见，每次都重新获取当前层级列表，确保最新
+        
+        for (const part of parts) {
+            // 1. 获取当前目录内容
+            const contents = await getFolderContents(currentId);
+            
+            // 2. 查找是否存在同名文件夹
+            const existingFolder = contents.folders.find(f => f.name === part);
+            
+            if (existingFolder) {
+                currentId = existingFolder.encrypted_id;
+                // 更新 UI 状态提示
+                const status = document.getElementById('uploadStatusText');
+                if(status) status.textContent = `进入目录: ${part}`;
+            } else {
+                // 3. 不存在，创建它
+                const status = document.getElementById('uploadStatusText');
+                if(status) status.textContent = `创建目录: ${part}`;
+                
+                try {
+                    await axios.post('/api/folder/create', { name: part, parentId: currentId });
+                    
+                    // 创建后，再次获取列表以拿到新 ID
+                    // 注意：因为 API 可能不直接返回加密 ID，所以必须重新 fetch
+                    const updatedContents = await getFolderContents(currentId);
+                    const newFolder = updatedContents.folders.find(f => f.name === part);
+                    
+                    if (newFolder) {
+                        currentId = newFolder.encrypted_id;
+                    } else {
+                        throw new Error(`无法获取新创建目录 ID: ${part}`);
+                    }
+                } catch (e) {
+                    console.error('递归创建失败', e);
+                    throw e; // 中断上传
+                }
+            }
+        }
+        
+        return currentId;
+    }
+
+    // 辅助：递归扫描 DataTransferItem (拖拽用)
+    // 返回带 path 属性的对象数组: [{ file: File, path: "A/B" }]
+    async function scanEntry(entry, path = '') {
         if (entry.isFile) {
             return new Promise((resolve) => {
                 entry.file((file) => {
-                    resolve([file]);
+                    resolve([{ file: file, path: path }]);
                 });
             });
         } else if (entry.isDirectory) {
             const dirReader = entry.createReader();
+            const currentPath = path ? `${path}/${entry.name}` : entry.name;
             let entries = [];
             
-            // readEntries 可能不会一次返回所有文件，需要递归调用
             const readAllEntries = async () => {
                 return new Promise((resolve, reject) => {
                     dirReader.readEntries(async (results) => {
@@ -573,7 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             let files = [];
             for (const subEntry of entries) {
-                const subFiles = await scanEntry(subEntry);
+                const subFiles = await scanEntry(subEntry, currentPath);
                 files = files.concat(subFiles);
             }
             return files;
@@ -581,7 +650,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return [];
     }
 
-    // 核心：处理拖拽的文件项 (DataTransferItemList)
     async function scanDataTransferItems(items) {
         let files = [];
         for (let i = 0; i < items.length; i++) {
@@ -589,11 +657,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (item.kind === 'file') {
                 const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : (item.getAsEntry ? item.getAsEntry() : null);
                 if (entry) {
-                    const entryFiles = await scanEntry(entry);
+                    // 如果是第一层，path 留空，否则文件名会包含自身
+                    const entryFiles = await scanEntry(entry, '');
                     files = files.concat(entryFiles);
                 } else {
                     const file = item.getAsFile();
-                    if(file) files.push(file);
+                    if(file) files.push({ file: file, path: '' });
                 }
             }
         }
@@ -601,35 +670,51 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 通用上传执行函数 (队列模式)
+     * 通用上传执行函数 (队列模式 + 目录结构保持)
+     * fileObjects: 数组，每个元素可能是 File (来自 input) 或者 { file: File, path: "A/B" } (来自拖拽)
      */
-    async function executeUpload(files, targetEncryptedId) {
-        if (!files || files.length === 0) return alert('请选择至少一个文件');
+    async function executeUpload(inputItems, targetEncryptedId) {
+        if (!inputItems || inputItems.length === 0) return alert('请选择至少一个文件');
         
-        const folderId = targetEncryptedId || currentFolderId;
+        const rootId = targetEncryptedId || currentFolderId;
         
-        // 1. 将 FileList 或 Array 统一转为数组
-        let fileQueue = [];
-        if (files instanceof FileList) {
-            fileQueue = Array.from(files);
-        } else if (Array.isArray(files)) {
-            fileQueue = files;
-        } else {
-            fileQueue = [files];
+        // 1. 标准化输入为 { file, path } 结构
+        let queue = [];
+        
+        // 处理 FileList (来自普通 input multiple)
+        if (inputItems instanceof FileList) {
+            for(let i=0; i<inputItems.length; i++) {
+                // 普通 input 选文件没有目录结构
+                queue.push({ file: inputItems[i], path: '' });
+            }
+        } 
+        // 处理 input webkitdirectory (来自文件夹 input)
+        else if (Array.isArray(inputItems) && inputItems.length > 0 && inputItems[0] instanceof File) {
+             inputItems.forEach(f => {
+                 // webkitRelativePath 格式: "Folder/Sub/File.txt"
+                 // 我们需要 path: "Folder/Sub"
+                 const rel = f.webkitRelativePath || '';
+                 const pathPart = rel.substring(0, rel.lastIndexOf('/'));
+                 queue.push({ file: f, path: pathPart });
+             });
+        }
+        // 处理拖拽过来的自定义对象 { file, path }
+        else if (Array.isArray(inputItems)) {
+            queue = inputItems; // 已经是标准化格式
         }
 
-        if (fileQueue.length === 0) return;
+        if (queue.length === 0) return;
 
         // 2. 初始化 UI
         if(uploadModal.style.display === 'none') {
             uploadModal.style.display = 'block';
-            document.getElementById('uploadForm').style.display = 'none'; // 隐藏表单
+            document.getElementById('uploadForm').style.display = 'none';
         }
         
         progressArea.style.display = 'block';
         const progressBar = document.getElementById('progressBar');
         
-        // 创建或清空状态文字
+        // 状态文字容器
         let statusText = document.getElementById('uploadStatusText');
         if (!statusText) {
             statusText = document.createElement('div');
@@ -639,36 +724,57 @@ document.addEventListener('DOMContentLoaded', () => {
             statusText.id = 'uploadStatusText';
             progressArea.appendChild(statusText);
         }
-        statusText.textContent = '准备上传...';
+        statusText.textContent = '分析目录结构...';
 
         progressBar.style.width = '0%';
         progressBar.textContent = '0%';
 
         // 3. 计算总大小
-        const totalBytes = fileQueue.reduce((acc, f) => acc + f.size, 0);
+        const totalBytes = queue.reduce((acc, item) => acc + item.file.size, 0);
         let loadedBytesGlobal = 0;
         
         let successCount = 0;
         let failCount = 0;
         const errors = [];
 
-        // 4. 逐个上传
-        for (let i = 0; i < fileQueue.length; i++) {
-            const file = fileQueue[i];
-            const formData = new FormData();
-            
-            // 处理文件名 (优先使用 webkitRelativePath 如果有)
-            // 注意：通过 scanEntry 获取的 File 对象通常没有 webkitRelativePath，或者路径是相对于拖拽根目录的
-            // 简单处理：直接上传，后端扁平化存储。如果想要保持层级，需要在后端支持创建文件夹。
-            // 目前系统后端不支持自动创建层级目录，所以所有文件会平铺。
-            const fileName = file.name; 
-            formData.append('files', file, fileName);
+        // 路径缓存: pathString -> encryptedId，避免重复 API 请求
+        const pathCache = {}; 
+        pathCache[''] = rootId; // 根路径直接映射
 
-            statusText.textContent = `正在上传 (${i + 1}/${fileQueue.length}): ${fileName}`;
+        // 4. 逐个处理 (串行，确保文件夹创建顺序)
+        for (let i = 0; i < queue.length; i++) {
+            const item = queue[i];
+            const file = item.file;
+            const relPath = item.path || ''; // 相对路径，如 "A/B"
+            
+            // 获取目标文件夹 ID
+            let targetFolderId = rootId;
+            
+            try {
+                if (pathCache[relPath]) {
+                    targetFolderId = pathCache[relPath];
+                } else {
+                    // 如果缓存里没有，去递归创建/查找
+                    // 优化：如果 relPath 是 "A/B"，先检查 "A" 是否在缓存
+                    targetFolderId = await ensureRemotePath(relPath, rootId);
+                    pathCache[relPath] = targetFolderId;
+                }
+            } catch (e) {
+                console.error(`无法创建目录结构: ${relPath}`, e);
+                failCount++;
+                errors.push(`目录创建失败: ${relPath}`);
+                continue; // 跳过此文件
+            }
+
+            // 执行上传
+            const formData = new FormData();
+            formData.append('files', file, file.name);
+
+            statusText.textContent = `[${i + 1}/${queue.length}] 上传: ${file.name}`;
 
             try {
                 let currentFileLoaded = 0;
-                await axios.post(`/upload?folderId=${folderId || ''}`, formData, {
+                await axios.post(`/upload?folderId=${targetFolderId || ''}`, formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                     onUploadProgress: (p) => {
                         const diff = p.loaded - currentFileLoaded;
@@ -683,9 +789,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 successCount++;
             } catch (error) {
-                console.error(`文件 ${fileName} 上传失败:`, error);
+                console.error(`文件 ${file.name} 上传失败:`, error);
                 failCount++;
-                errors.push(`${fileName}: ${error.response?.data?.message || error.message}`);
+                errors.push(`${file.name}: ${error.response?.data?.message || error.message}`);
             }
         }
 
@@ -721,11 +827,30 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadModal.style.display = 'none';
     });
     
+    // 表单提交事件 (区分文件和文件夹)
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const rawFiles = [...fileInput.files, ...folderInput.files];
-        const targetEncryptedId = folderSelect.value;
-        await executeUpload(rawFiles, targetEncryptedId);
+        
+        let allItems = [];
+        
+        // 处理普通文件
+        if (fileInput.files.length > 0) {
+            // 普通 input 的 webkitRelativePath 为空
+            allItems = allItems.concat(Array.from(fileInput.files).map(f => ({ file: f, path: '' })));
+        }
+        
+        // 处理文件夹
+        if (folderInput.files.length > 0) {
+            // webkitdirectory 的 input 会带 webkitRelativePath
+            // e.g. "Docs/work/resume.pdf"
+            allItems = allItems.concat(Array.from(folderInput.files));
+            // executeUpload 内部会处理 File 对象带 webkitRelativePath 的情况
+        }
+        
+        // 目标：如果下拉框选了，就用选的；否则用当前目录
+        const targetId = folderSelect.value || currentFolderId;
+        
+        await executeUpload(allItems, targetId);
     });
 
     // 拖拽相关逻辑
@@ -754,17 +879,16 @@ document.addEventListener('DOMContentLoaded', () => {
         dragCounter = 0;
         dropZoneOverlay.style.display = 'none';
         
-        // 使用 DataTransferItem 接口来支持文件夹递归
         const items = e.dataTransfer.items;
         if (items && items.length > 0) {
-            // 扫描所有拖入的项目（包括文件夹内的文件）
             const files = await scanDataTransferItems(items);
             if (files.length > 0) {
                 await executeUpload(files, currentFolderId);
             }
         } else if (e.dataTransfer.files.length > 0) {
-            // 回退兼容
-            await executeUpload(e.dataTransfer.files, currentFolderId);
+            // 回退兼容: 转换为标准结构
+            const list = Array.from(e.dataTransfer.files).map(f => ({ file: f, path: '' }));
+            await executeUpload(list, currentFolderId);
         }
     });
 
