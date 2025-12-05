@@ -181,6 +181,27 @@
             <div id="modalContent"></div>
         </div>
     </div>
+    
+    <div id="conflictModal" class="modal" style="z-index: 2001;">
+        <div class="modal-content" style="width: 400px;">
+            <h3><i class="fas fa-exclamation-triangle" style="color: #ffc107;"></i> 文件冲突</h3>
+            <p id="conflictMessage" style="margin: 15px 0; color: #555;">目标文件夹中已存在同名文件。</p>
+            
+            <div class="form-group">
+                <label class="checkbox-label" style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size: 0.9rem;">
+                    <input type="checkbox" id="applyToAllCheckbox"> 
+                    <span>为之后的所有冲突执行此操作</span>
+                </label>
+            </div>
+
+            <div class="modal-actions" style="flex-direction: column; gap: 10px;">
+                <button id="conflictRenameBtn" class="btn primary-btn full-width"><i class="fas fa-copy"></i> 保留两者 (自动重命名)</button>
+                <button id="conflictOverwriteBtn" class="btn danger-btn full-width"><i class="fas fa-file-import"></i> 覆盖 (替换原文件)</button>
+                <button id="conflictSkipBtn" class="btn full-width" style="border: 1px solid #ccc;"><i class="fas fa-forward"></i> 跳过</button>
+                <button id="conflictCancelBtn" class="btn full-width" style="color: #666;">取消操作</button>
+            </div>
+        </div>
+    </div>
 
     <div id="dropZoneOverlay" class="drop-overlay">
         <div class="drop-message">
