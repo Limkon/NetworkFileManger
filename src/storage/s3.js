@@ -1,199 +1,110 @@
-// src/storage/s3.js
 import { AwsClient } from 'aws4fetch';
 
-export default class S3Storage {
+export class S3Storage {
     constructor(config) {
-        this.bucket = config.bucket;
-        this.region = config.region || 'auto';
-        this.endpoint = config.endpoint || `https://s3.${this.region}.amazonaws.com`;
+        this.config = config;
+        this.isR2Binding = config.isR2Binding; // 特殊标志：是否为 R2 绑定
         
-        // 确保 endpoint 不带结尾斜杠
-        if (this.endpoint.endsWith('/')) {
-            this.endpoint = this.endpoint.slice(0, -1);
+        if (this.isR2Binding) {
+            this.bucket = config.bucket; // R2 绑定对象
+        } else {
+            // 标准 S3 / R2 API 配置
+            this.client = new AwsClient({
+                accessKeyId: config.accessKeyId,
+                secretAccessKey: config.secretAccessKey,
+                service: 's3',
+                region: config.region || 'auto',
+            });
+            this.endpoint = config.endpoint;
+            this.bucketName = config.bucketName;
+            this.publicUrl = config.publicUrl;
         }
-
-        // 初始化 AwsClient
-        this.client = new AwsClient({
-            accessKeyId: config.accessKeyId,
-            secretAccessKey: config.secretAccessKey,
-            region: this.region,
-            service: 's3'
-        });
-
-        // 构造 Bucket 基础 URL
-        this.bucketUrl = `${this.endpoint}/${this.bucket}`;
     }
 
-    /**
-     * 辅助函数：标准化 Key (去除开头的 /)
-     */
-    _normalizeKey(key) {
-        return key.startsWith('/') ? key.slice(1) : key;
-    }
-
-    /**
-     * 上传文件
-     * @param {ReadableStream|File} fileStream 
-     * @param {string} fileName 
-     * @param {string} type 
-     * @param {number} userId 
-     */
-    async upload(fileStream, fileName, type, userId) {
-        // 构造存储路径: userId/fileName
-        const key = `${userId}/${fileName}`;
-        const normalizedKey = this._normalizeKey(key);
-        const url = `${this.bucketUrl}/${encodeURIComponent(normalizedKey)}`;
-
-        const response = await this.client.fetch(url, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': type || 'application/octet-stream'
-            },
-            body: fileStream
-        });
-
-        if (!response.ok) {
-            throw new Error(`S3 上传失败: ${response.status} ${response.statusText}`);
+    async upload(file, fileName, contentType, userId, folderId) {
+        const key = `${userId}/${folderId}/${fileName}`; // 简单的路径结构
+        
+        if (this.isR2Binding) {
+            await this.bucket.put(key, file, {
+                httpMetadata: { contentType: contentType }
+            });
+        } else {
+            const url = `${this.endpoint}/${this.bucketName}/${encodeURIComponent(key)}`;
+            await this.client.fetch(url, {
+                method: 'PUT',
+                headers: { 'Content-Type': contentType },
+                body: file
+            });
         }
 
         return {
-            fileId: key, // 数据库存储的标识 (保留原始路径)
+            fileId: key, // S3 Key 作为 fileId
             thumbId: null
         };
     }
 
-    /**
-     * 下载文件
-     * @param {string} fileId 
-     */
-    async download(fileId) {
-        const normalizedKey = this._normalizeKey(fileId);
-        const url = `${this.bucketUrl}/${encodeURIComponent(normalizedKey)}`;
-
-        const response = await this.client.fetch(url, {
-            method: 'GET'
-        });
-
-        if (!response.ok) {
-            throw new Error(`S3 下载失败: ${response.status} ${response.statusText}`);
+    async download(fileId, userId) {
+        // fileId 即为 S3 Key
+        if (this.isR2Binding) {
+            const object = await this.bucket.get(fileId);
+            if (!object) throw new Error('File not found in R2');
+            
+            return {
+                stream: object.body,
+                contentType: object.httpMetadata?.contentType || 'application/octet-stream',
+                headers: {
+                    'Content-Length': object.size,
+                    'ETag': object.etag
+                }
+            };
+        } else {
+            const url = `${this.endpoint}/${this.bucketName}/${encodeURIComponent(fileId)}`;
+            const res = await this.client.fetch(url, { method: 'GET' });
+            if (!res.ok) throw new Error(`S3 Download Error: ${res.status}`);
+            
+            return {
+                stream: res.body,
+                contentType: res.headers.get('Content-Type'),
+                headers: {
+                    'Content-Length': res.headers.get('Content-Length'),
+                    'ETag': res.headers.get('ETag')
+                }
+            };
         }
-
-        return {
-            stream: response.body,
-            contentType: response.headers.get('content-type'),
-            headers: {
-                'Content-Length': response.headers.get('content-length'),
-                'ETag': response.headers.get('etag'),
-                'Last-Modified': response.headers.get('last-modified')
-            }
-        };
     }
 
-    /**
-     * 删除文件或文件夹
-     * @param {Array} files 
-     * @param {Array} folders 
-     */
-    async remove(files, folders) {
-        const items = [...(files || [])];
+    async remove(files, folders, userId) {
+        // 批量删除文件
+        const keysToDelete = files.map(f => f.file_id);
         
-        const deletePromises = items.map(async (item) => {
-            const fileId = item.file_id || item.path; // 兼容逻辑
-            if (!fileId) return;
-
-            const normalizedKey = this._normalizeKey(fileId);
-            const url = `${this.bucketUrl}/${encodeURIComponent(normalizedKey)}`;
-            
-            try {
+        // 简单的逐个删除实现 (R2 binding 支持 delete(key))
+        if (this.isR2Binding) {
+            for (const key of keysToDelete) {
+                await this.bucket.delete(key);
+            }
+        } else {
+            // S3 API 逐个删除 (生产环境建议使用 DeleteObjects XML 批量删除)
+            for (const key of keysToDelete) {
+                const url = `${this.endpoint}/${this.bucketName}/${encodeURIComponent(key)}`;
                 await this.client.fetch(url, { method: 'DELETE' });
-            } catch (e) {
-                console.warn(`S3 删除失败 (${fileId}):`, e.message);
             }
-        });
-
-        await Promise.all(deletePromises);
-    }
-
-    /**
-     * 移动文件 (Copy + Delete)
-     * @param {string} oldPath 
-     * @param {string} newPath 
-     */
-    async moveFile(oldPath, newPath) {
-        const sourceKey = this._normalizeKey(oldPath);
-        const destKey = this._normalizeKey(newPath);
-
-        // 1. Copy Object
-        const copySource = `/${this.bucket}/${sourceKey}`; 
-        const destUrl = `${this.bucketUrl}/${encodeURIComponent(destKey)}`;
-        
-        const copySourceHeader = encodeURI(copySource);
-
-        const copyRes = await this.client.fetch(destUrl, {
-            method: 'PUT',
-            headers: {
-                'x-amz-copy-source': copySourceHeader
-            }
-        });
-
-        if (!copyRes.ok) {
-            throw new Error(`S3 移动(复制)失败: ${copyRes.status} ${copyRes.statusText}`);
-        }
-
-        // 2. Delete Old Object
-        const oldUrl = `${this.bucketUrl}/${encodeURIComponent(sourceKey)}`;
-        const delRes = await this.client.fetch(oldUrl, { method: 'DELETE' });
-
-        if (!delRes.ok) {
-            console.warn(`S3 移动(删除旧文件)失败，可能产生了残留文件: ${oldPath}`);
         }
     }
 
-    /**
-     * 列出文件 (List Objects V2)
-     * 用于扫描导入功能
-     * @param {string} prefix - 前缀 (通常是 userId/)
-     */
-    async list(prefix = '') {
-        const normalizedPrefix = this._normalizeKey(prefix);
-        // 使用 list-type=2 (ListObjectsV2)
-        const url = `${this.bucketUrl}?list-type=2&prefix=${encodeURIComponent(normalizedPrefix)}`;
-
-        const response = await this.client.fetch(url, { method: 'GET' });
-        if (!response.ok) {
-            // 尝试 V1
-            const v1Url = `${this.bucketUrl}?prefix=${encodeURIComponent(normalizedPrefix)}`;
-            const v1Response = await this.client.fetch(v1Url, { method: 'GET' });
-            if (!v1Response.ok) throw new Error(`S3 List 失败: ${response.status}`);
-            return await this._parseListXml(await v1Response.text());
+    async list(prefix) {
+        // 用于扫描导入功能
+        if (this.isR2Binding) {
+            const listed = await this.bucket.list({ prefix: prefix });
+            return listed.objects.map(obj => ({
+                fileId: obj.key,
+                size: obj.size,
+                updatedAt: obj.uploaded
+            }));
+        } else {
+            // 标准 S3 ListObjectsV2 实现略复杂，这里简化处理或暂不支持
+            // 如果需要支持 S3 导入，需要解析 XML 响应
+            console.warn("标准 S3 模式下的 List 功能尚未完全实现 XML 解析");
+            return [];
         }
-
-        const text = await response.text();
-        return await this._parseListXml(text);
-    }
-
-    async _parseListXml(text) {
-        // 简单 XML 解析 (Workers 中没有 DOMParser，使用正则提取)
-        const contents = [];
-        // 匹配 <Contents>...</Contents> 块
-        const contentRegex = /<Contents>(.*?)<\/Contents>/gs;
-        let contentMatch;
-
-        while ((contentMatch = contentRegex.exec(text)) !== null) {
-            const contentBody = contentMatch[1];
-            
-            const keyMatch = contentBody.match(/<Key>(.*?)<\/Key>/);
-            const sizeMatch = contentBody.match(/<Size>(\d+)<\/Size>/);
-            
-            if (keyMatch) {
-                contents.push({
-                    fileId: keyMatch[1], // Key
-                    size: sizeMatch ? parseInt(sizeMatch[1]) : 0,
-                    updatedAt: Date.now() // 简化处理
-                });
-            }
-        }
-        
-        return contents;
     }
 }
