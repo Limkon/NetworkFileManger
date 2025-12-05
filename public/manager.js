@@ -1,7 +1,3 @@
-{
-type: uploaded file
-fileName: limkon/cfilemanger/CFileManger-628f1ebbb4936b82ef613f3eb2f30b8e37290086/public/manager.js
-fullContent:
 // public/manager.js
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1153,3 +1149,4 @@ document.addEventListener('DOMContentLoaded', () => {
     function escapeHtml(text) { if (!text) return ''; return text.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[m]); }
     function formatSize(bytes) { if (bytes === 0) return '0 B'; const k = 1024; const sizes = ['B', 'KB', 'MB', 'GB', 'TB']; const i = Math.floor(Math.log(bytes) / Math.log(k)); return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]; }
 });
+
