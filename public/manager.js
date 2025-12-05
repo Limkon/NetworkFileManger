@@ -1,20 +1,16 @@
 // public/manager.js
 
 document.addEventListener('DOMContentLoaded', () => {
-    // =================================================================================
-    // 1. 狀態變量與配置
-    // =================================================================================
-    let currentFolderId = null; // 當前資料夾的加密 ID
-    let currentPath = [];       // 麵包屑導航數據
-    let items = [];             // 當前資料夾內容緩存
-    let selectedItems = new Set(); // 選中的項目 ID (格式: "file:123" 或 "folder:456")
-    let isMultiSelectMode = false; // 多選模式標記
-    let viewMode = localStorage.getItem('viewMode') || 'grid'; // 視圖模式: 'grid' | 'list'
-    let isTrashMode = false; // 回收站模式標記
+    // 1. 状态变量与配置
+    let currentFolderId = null; 
+    let currentPath = [];       
+    let items = [];             
+    let selectedItems = new Set(); 
+    let isMultiSelectMode = false; 
+    let viewMode = localStorage.getItem('viewMode') || 'grid'; 
+    let isTrashMode = false;
 
-    // =================================================================================
     // 2. DOM 元素引用
-    // =================================================================================
     const itemGrid = document.getElementById('itemGrid');
     const itemListView = document.getElementById('itemListView');
     const itemListBody = document.getElementById('itemListBody');
@@ -22,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     const searchForm = document.getElementById('searchForm');
     
-    // 上傳相關
+    // 上传相关
     const uploadModal = document.getElementById('uploadModal');
     const uploadForm = document.getElementById('uploadForm');
     const folderSelect = document.getElementById('folderSelect');
@@ -31,14 +27,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileInput = document.getElementById('fileInput');
     const folderInput = document.getElementById('folderInput');
     
-    // 配額顯示
+    // 配额显示
     const quotaUsedEl = document.getElementById('quotaUsed');
     const quotaMaxEl = document.getElementById('quotaMax');
     const quotaBar = document.getElementById('quotaBar');
     
-    // 菜單與交互
+    // 菜单与交互
     const contextMenu = document.getElementById('contextMenu');
-    // Context Menu Items
     const ctxCreateFolderBtn = document.getElementById('ctxCreateFolderBtn');
     const ctxCreateFileBtn = document.getElementById('ctxCreateFileBtn');
     const editBtn = document.getElementById('editBtn');
@@ -49,7 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const emptyTrashBtn = document.getElementById('emptyTrashBtn'); 
     const restoreBtn = document.getElementById('restoreBtn'); 
     const deleteForeverBtn = document.getElementById('deleteForeverBtn'); 
-    const dropZone = document.getElementById('dropZone');
     const dropZoneOverlay = document.getElementById('dropZoneOverlay');
 
     // Move Modal
@@ -76,25 +70,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalContent = document.getElementById('modalContent');
     const closePreviewBtn = document.querySelector('#previewModal .close-button');
 
-    // =================================================================================
-    // 3. 初始化邏輯
-    // =================================================================================
-    
-    // 解析 URL 獲取當前資料夾 ID (路徑格式: /view/:encryptedId)
+    // 3. 初始化逻辑
     const pathParts = window.location.pathname.split('/');
     if (pathParts[1] === 'view' && pathParts[2] && pathParts[2] !== 'null') {
         currentFolderId = pathParts[2];
     }
 
-    // 應用視圖設置並加載數據
     updateViewModeUI();
     loadFolder(currentFolderId);
     updateQuota();
 
-    // =================================================================================
-    // 4. 核心數據加載與渲染
-    // =================================================================================
-
+    // 4. 核心数据加载与渲染
     async function loadFolder(encryptedId) {
         if (!encryptedId && !isTrashMode) return;
         
@@ -122,12 +108,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error(error);
             const msg = error.response?.data?.message || error.message;
-            if (error.response && error.response.status === 400 && msg.includes('無效 ID')) {
+            if (error.response && error.response.status === 400 && msg.includes('无效 ID')) {
                  window.location.href = '/'; 
                  return;
             }
-            itemGrid.innerHTML = `<div class="error-msg" style="text-align:center; padding:20px; color:#dc3545;">加載失敗: ${msg}</div>`;
-            itemListBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#dc3545;">加載失敗: ${msg}</td></tr>`;
+            itemGrid.innerHTML = `<div class="error-msg" style="text-align:center; padding:20px; color:#dc3545;">加载失败: ${msg}</div>`;
+            itemListBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#dc3545;">加载失败: ${msg}</td></tr>`;
         }
     }
 
@@ -160,19 +146,19 @@ document.addEventListener('DOMContentLoaded', () => {
             items = [...res.data.folders, ...res.data.files];
             renderItems(items);
         } catch (e) {
-            alert('加載回收站失敗: ' + (e.response?.data?.message || e.message));
+            alert('加载回收站失败: ' + (e.response?.data?.message || e.message));
         }
     }
     
     trashBtn.addEventListener('click', loadTrash);
 
     emptyTrashBtn.addEventListener('click', async () => {
-        if(confirm('確定要清空回收站嗎？此操作無法撤銷。')) {
+        if(confirm('确定要清空回收站吗？此操作无法撤销。')) {
             try {
                 await axios.post('/api/trash/empty');
                 loadTrash();
                 updateQuota();
-            } catch(e) { alert('操作失敗'); }
+            } catch(e) { alert('操作失败'); }
         }
     });
 
@@ -183,7 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
             quotaUsedEl.textContent = formatSize(used);
             const maxVal = parseInt(max);
             const isUnlimited = maxVal === 0;
-            quotaMaxEl.textContent = isUnlimited ? '無限' : formatSize(maxVal);
+            quotaMaxEl.textContent = isUnlimited ? '无限' : formatSize(maxVal);
             if (!isUnlimited && maxVal > 0) {
                 const percent = Math.min(100, Math.round((used / maxVal) * 100));
                 quotaBar.style.width = `${percent}%`;
@@ -201,7 +187,7 @@ document.addEventListener('DOMContentLoaded', () => {
         breadcrumb.innerHTML = '';
         const rootLi = document.createElement('a');
         rootLi.href = '#';
-        rootLi.innerHTML = '<i class="fas fa-home"></i> 首頁';
+        rootLi.innerHTML = '<i class="fas fa-home"></i> 首页';
         rootLi.onclick = (e) => { e.preventDefault(); if(currentPath.length > 0) loadFolder(currentPath[0].encrypted_id); };
         breadcrumb.appendChild(rootLi);
         currentPath.forEach((folder, index) => {
@@ -220,8 +206,8 @@ document.addEventListener('DOMContentLoaded', () => {
         itemGrid.innerHTML = '';
         itemListBody.innerHTML = '';
         if (itemsToRender.length === 0) {
-            itemGrid.innerHTML = '<div class="empty-folder" style="text-align:center; padding:50px; color:#999;"><i class="fas fa-folder-open" style="font-size:48px; margin-bottom:10px;"></i><p>此位置為空</p></div>';
-            itemListBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#999;">為空</td></tr>`;
+            itemGrid.innerHTML = '<div class="empty-folder" style="text-align:center; padding:50px; color:#999;"><i class="fas fa-folder-open" style="font-size:48px; margin-bottom:10px;"></i><p>此位置为空</p></div>';
+            itemListBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#999;">为空</td></tr>`;
             return;
         }
         itemsToRender.forEach(item => {
@@ -286,7 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'fas fa-file';
     }
 
-    // 5. 交互事件處理
+    // 5. 交互事件处理
     function handleItemClick(e, item, el) {
         const id = getItemId(item);
         if (e.ctrlKey || isMultiSelectMode) {
@@ -304,20 +290,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (item.type === 'folder') { loadFolder(item.encrypted_id); } 
         else { 
             const ext = item.name.split('.').pop().toLowerCase();
-            if (['txt', 'md', 'js', 'html', 'css', 'json', 'xml', 'py', 'java'].includes(ext)) {
+            if (['txt', 'md', 'js', 'html', 'css', 'json', 'xml', 'py', 'java', 'c', 'cpp', 'log', 'ini', 'conf'].includes(ext)) {
                  window.open(`/editor.html?id=${item.message_id}&name=${encodeURIComponent(item.name)}`, '_blank');
             } else { window.open(`/download/proxy/${item.message_id}`, '_blank'); }
         }
     }
 
-    // 統一處理右鍵事件
+    // 统一处理右键事件
     document.querySelector('.main-content').addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        
         const targetItem = e.target.closest('.item-card, .list-item');
-        
         if (targetItem) {
-            // 點擊在項目上
             const id = targetItem.dataset.id;
             if (!selectedItems.has(id)) {
                 document.querySelectorAll('.selected').forEach(x => x.classList.remove('selected'));
@@ -327,32 +310,25 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             updateContextMenuState(true);
         } else {
-            // 點擊在空白處
             if (!isMultiSelectMode) {
                 selectedItems.clear();
                 document.querySelectorAll('.selected').forEach(x => x.classList.remove('selected'));
             }
             updateContextMenuState(false);
         }
-
         showContextMenu(e.clientX, e.clientY);
     });
 
-    function handleContextMenu(e, item) {
-        // 留空，由上面的全局監聽器處理
-    }
+    function handleContextMenu(e, item) { }
 
     function showContextMenu(x, y) {
         const menuWidth = 200; 
         const menuHeight = isTrashMode ? 50 : 350;
-        
         if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
         if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
-
         contextMenu.style.top = `${y}px`;
         contextMenu.style.left = `${x}px`;
         contextMenu.style.display = 'flex';
-        
         document.addEventListener('click', () => contextMenu.style.display = 'none', { once: true });
     }
 
@@ -360,7 +336,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const count = selectedItems.size;
         const isSingle = count === 1;
         let firstType = null;
-        
         if (isSingle) {
             const idStr = Array.from(selectedItems)[0];
             [firstType] = parseItemId(idStr);
@@ -374,7 +349,7 @@ document.addEventListener('DOMContentLoaded', () => {
             itemActions.forEach(el => {
                 if (el.id === 'deleteBtn') {
                     el.style.display = hasSelection ? 'flex' : 'none';
-                    el.innerHTML = '<i class="fas fa-trash-restore"></i> 還原 / 刪除';
+                    el.innerHTML = '<i class="fas fa-trash-restore"></i> 还原 / 删除';
                 } else {
                     el.style.display = 'none';
                 }
@@ -385,12 +360,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (hasSelection) {
             globalActions.forEach(el => el.style.display = 'none');
             itemActions.forEach(el => el.style.display = 'flex');
-
             const setDisplay = (id, show) => {
                 const btn = document.getElementById(id);
                 if (btn) btn.style.display = show ? 'flex' : 'none';
             };
-
             setDisplay('openBtn', isSingle && firstType === 'folder');
             setDisplay('previewBtn', isSingle && firstType === 'file');
             setDisplay('editBtn', isSingle && firstType === 'file'); 
@@ -398,10 +371,8 @@ document.addEventListener('DOMContentLoaded', () => {
             setDisplay('renameBtn', isSingle);
             setDisplay('shareBtn', isSingle);
             setDisplay('lockBtn', isSingle && firstType === 'folder');
-            
             const delBtn = document.getElementById('deleteBtn');
-            if(delBtn) delBtn.innerHTML = '<i class="fas fa-trash-alt"></i> 刪除';
-
+            if(delBtn) delBtn.innerHTML = '<i class="fas fa-trash-alt"></i> 删除';
         } else {
             globalActions.forEach(el => el.style.display = 'flex');
             itemActions.forEach(el => el.style.display = 'none');
@@ -410,35 +381,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const infoEl = document.getElementById('selectionInfo');
         if (count > 0) {
             infoEl.style.display = 'block';
-            infoEl.textContent = `已選中 ${count} 個項目`;
+            infoEl.textContent = `已选中 ${count} 个项目`;
         } else {
             infoEl.style.display = 'none';
         }
     }
 
-    // 6. 按鈕邏輯
-    // 新建文件夾
+    // 6. 按钮逻辑
     ctxCreateFolderBtn.addEventListener('click', async () => {
-        const name = prompt('請輸入新文件夾名稱:');
+        const name = prompt('请输入新文件夹名称:');
         if (name && name.trim()) {
             try {
                 await axios.post('/api/folder/create', { name: name.trim(), parentId: currentFolderId });
                 loadFolder(currentFolderId);
-            } catch (error) { alert('創建失敗'); }
+            } catch (error) { alert('创建失败'); }
         }
     });
 
-    // 新建文本文件
     ctxCreateFileBtn.addEventListener('click', async () => {
-        const filename = prompt('請輸入文件名 (例如: note.txt):', 'new_file.txt');
+        const filename = prompt('请输入文件名 (例如: note.txt):', 'new_file.txt');
         if (!filename || !filename.trim()) return;
-        
-        // 創建空文件上傳
         const emptyFile = new File([""], filename.trim(), { type: "text/plain" });
         await executeUpload([emptyFile], currentFolderId);
     });
 
-    // 編輯文件
     editBtn.addEventListener('click', () => {
         if (selectedItems.size !== 1) return;
         const idStr = Array.from(selectedItems)[0];
@@ -447,64 +413,58 @@ document.addEventListener('DOMContentLoaded', () => {
         const item = items.find(i => getItemId(i) === idStr);
         const ext = item.name.split('.').pop().toLowerCase();
         const editableExts = ['txt', 'md', 'js', 'json', 'css', 'html', 'xml', 'py', 'java', 'c', 'cpp', 'h', 'log', 'ini', 'conf', 'yml', 'yaml', 'sh', 'bat'];
-        if (editableExts.includes(ext) || confirm('此文件類型可能不支持文本編輯，確定要嘗試打開嗎？')) {
+        if (editableExts.includes(ext) || confirm('此文件类型可能不支持文本编辑，确定要尝试打开吗？')) {
             window.open(`/editor.html?id=${id}&name=${encodeURIComponent(item.name)}`, '_blank');
         }
     });
 
-    // 刪除按鈕
     document.getElementById('deleteBtn').addEventListener('click', async () => {
         if (selectedItems.size === 0) return;
         if (isTrashMode) {
-            alert('請使用頂部的「還原」或「永久刪除」按鈕進行操作。');
+            alert('请使用顶部的「还原」或「永久删除」按钮进行操作。');
             return;
         }
-        if (!confirm(`確定要刪除選中的 ${selectedItems.size} 個項目嗎？`)) return;
+        if (!confirm(`确定要删除选中的 ${selectedItems.size} 个项目吗？`)) return;
         const files = []; const folders = [];
         selectedItems.forEach(id => { const [type, realId] = parseItemId(id); if (type === 'file') files.push(realId); else folders.push(realId); });
         try { await axios.post('/api/delete', { files, folders, permanent: false }); selectedItems.clear(); loadFolder(currentFolderId); updateQuota(); } 
-        catch (error) { alert('刪除失敗'); }
+        catch (error) { alert('删除失败'); }
     });
 
-    // 還原按鈕
     restoreBtn.addEventListener('click', async () => {
-        if (selectedItems.size === 0) return alert('請先選擇要還原的項目');
+        if (selectedItems.size === 0) return alert('请先选择要还原的项目');
         const files = []; const folders = [];
         selectedItems.forEach(id => { const [type, realId] = parseItemId(id); if (type === 'file') files.push(realId); else folders.push(realId); });
         try { await axios.post('/api/trash/restore', { files, folders }); selectedItems.clear(); loadTrash(); updateQuota(); } 
-        catch (error) { alert('還原失敗'); }
+        catch (error) { alert('还原失败'); }
     });
 
-    // 永久刪除
     deleteForeverBtn.addEventListener('click', async () => {
-        if (selectedItems.size === 0) return alert('請先選擇要刪除的項目');
-        if (!confirm('確定要永久刪除嗎？此操作無法撤銷！')) return;
+        if (selectedItems.size === 0) return alert('请先选择要删除的项目');
+        if (!confirm('确定要永久删除吗？此操作无法撤销！')) return;
         const files = []; const folders = [];
         selectedItems.forEach(id => { const [type, realId] = parseItemId(id); if (type === 'file') files.push(realId); else folders.push(realId); });
         try { await axios.post('/api/delete', { files, folders, permanent: true }); selectedItems.clear(); loadTrash(); updateQuota(); } 
-        catch (error) { alert('永久刪除失敗'); }
+        catch (error) { alert('永久删除失败'); }
     });
 
-    // 重命名
     document.getElementById('renameBtn').addEventListener('click', async () => {
         if (selectedItems.size !== 1) return;
         const idStr = Array.from(selectedItems)[0]; const [type, id] = parseItemId(idStr); const item = items.find(i => getItemId(i) === idStr);
         if (!item) return;
         const newName = prompt('重命名:', item.name);
         if (newName && newName !== item.name) {
-            try { await axios.post('/api/rename', { type, id, name: newName }); loadFolder(currentFolderId); } catch (error) { alert('重命名失敗'); }
+            try { await axios.post('/api/rename', { type, id, name: newName }); loadFolder(currentFolderId); } catch (error) { alert('重命名失败'); }
         }
     });
 
-    // 下載
     document.getElementById('downloadBtn').addEventListener('click', () => {
         if (selectedItems.size !== 1) return;
         const idStr = Array.from(selectedItems)[0]; const [type, id] = parseItemId(idStr);
-        if (type !== 'file') return alert('只能下載文件');
+        if (type !== 'file') return alert('只能下载文件');
         window.open(`/download/proxy/${id}`, '_blank');
     });
     
-    // 打開
     document.getElementById('openBtn').addEventListener('click', () => {
          if (selectedItems.size !== 1) return;
          const idStr = Array.from(selectedItems)[0]; const [type, id] = parseItemId(idStr);
@@ -514,7 +474,6 @@ document.addEventListener('DOMContentLoaded', () => {
          }
     });
     
-    // 預覽
     document.getElementById('previewBtn').addEventListener('click', async () => {
         if (selectedItems.size !== 1) return;
         const idStr = Array.from(selectedItems)[0]; const [type, id] = parseItemId(idStr); const item = items.find(i => getItemId(i) === idStr);
@@ -527,27 +486,26 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (['mp3','wav','ogg'].includes(ext)) content = `<audio src="${downloadUrl}" controls></audio>`;
         else if (['txt','md','json','js','css','html','xml','log'].includes(ext)) {
              try {
-                 modalContent.innerHTML = '<p>正在加載...</p>'; previewModal.style.display = 'flex';
+                 modalContent.innerHTML = '<p>正在加载...</p>'; previewModal.style.display = 'flex';
                  const res = await axios.get(downloadUrl, { responseType: 'text' });
                  content = `<pre>${escapeHtml(res.data)}</pre>`;
-             } catch(e) { content = `<p style="color:red">無法預覽: ${e.message}</p>`; }
-        } else content = `<div class="no-preview"><i class="fas fa-file" style="font-size:48px;margin-bottom:20px;"></i><p>不支持預覽</p><a href="${downloadUrl}" class="upload-link-btn">下載文件</a></div>`;
+             } catch(e) { content = `<p style="color:red">无法预览: ${e.message}</p>`; }
+        } else content = `<div class="no-preview"><i class="fas fa-file" style="font-size:48px;margin-bottom:20px;"></i><p>不支持预览</p><a href="${downloadUrl}" class="upload-link-btn">下载文件</a></div>`;
         modalContent.innerHTML = content; previewModal.style.display = 'flex';
     });
     closePreviewBtn.onclick = () => previewModal.style.display = 'none';
     
-    // 加密
     document.getElementById('lockBtn').addEventListener('click', async () => {
         if (selectedItems.size !== 1) return;
         const idStr = Array.from(selectedItems)[0]; const [type, id] = parseItemId(idStr);
         if (type !== 'folder') return;
-        const password = prompt('設置文件夾密碼 (留空則不設置):');
+        const password = prompt('设置文件夹密码 (留空则不设置):');
         if (password === null) return;
         try { 
             const item = items.find(i => getItemId(i) === idStr);
             await axios.post('/api/folder/lock', { folderId: item.encrypted_id, password: password }); 
-            alert('設置成功'); loadFolder(currentFolderId); 
-        } catch (e) { alert('操作失敗'); }
+            alert('设置成功'); loadFolder(currentFolderId); 
+        } catch (e) { alert('操作失败'); }
     });
 
     viewSwitchBtn.addEventListener('click', () => {
@@ -559,11 +517,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateViewModeUI() {
         if (viewMode === 'grid') {
-            itemGrid.style.display = 'grid'; itemListView.style.display = 'none';
+            itemGrid.style.display = 'grid';
+            itemListView.style.display = 'none';
             viewSwitchBtn.innerHTML = '<i class="fas fa-list"></i>';
+            viewSwitchBtn.title = "切换到列表视图";
         } else {
-            itemGrid.style.display = 'none'; itemListView.style.display = 'block';
+            itemGrid.style.display = 'none';
+            itemListView.style.display = 'block';
             viewSwitchBtn.innerHTML = '<i class="fas fa-th-large"></i>';
+            viewSwitchBtn.title = "切换到网格视图";
         }
     }
     
@@ -573,8 +535,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await axios.get(`/api/search?q=${encodeURIComponent(q)}`);
             items = [...res.data.folders, ...res.data.files];
             renderItems(items);
-            breadcrumb.innerHTML = '<span><i class="fas fa-search"></i> 搜索結果</span><a href="#" onclick="location.reload()" style="margin-left:10px;">退出搜索</a>';
-        } catch(e) { alert('搜索失敗'); }
+            breadcrumb.innerHTML = '<span><i class="fas fa-search"></i> 搜索结果</span><a href="#" onclick="location.reload()" style="margin-left:10px;">退出搜索</a>';
+        } catch(e) { alert('搜索失败'); }
     });
     
     // Move
@@ -583,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await axios.get('/api/folders');
             folderTree.innerHTML = '';
             const rootDiv = document.createElement('div');
-            rootDiv.className = 'folder-item'; rootDiv.textContent = '/ (根目錄)';
+            rootDiv.className = 'folder-item'; rootDiv.textContent = '/ (根目录)';
             const rootId = (currentPath.length > 0) ? currentPath[0].encrypted_id : (res.data.find(f => !f.parent_id)?.encrypted_id || '');
             rootDiv.dataset.id = rootId;
             rootDiv.onclick = () => selectMoveTarget(rootDiv); folderTree.appendChild(rootDiv);
@@ -606,10 +568,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const files = []; const folders = [];
         selectedItems.forEach(id => { const [type, realId] = parseItemId(id); if (type === 'file') files.push(realId); else folders.push(realId); });
         try {
-            confirmMoveBtn.textContent = '移動中...';
+            confirmMoveBtn.textContent = '移动中...';
             await axios.post('/api/move', { files, folders, targetFolderId: selectedMoveTargetId });
             moveModal.style.display = 'none'; selectedItems.clear(); loadFolder(currentFolderId);
-        } catch (e) { alert('移動失敗'); } finally { confirmMoveBtn.textContent = '確定移動'; }
+        } catch (e) { alert('移动失败'); } finally { confirmMoveBtn.textContent = '确定移动'; }
     });
     cancelMoveBtn.onclick = () => moveModal.style.display = 'none';
     
@@ -624,7 +586,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const [type, id] = parseItemId(Array.from(selectedItems)[0]);
         const expiresIn = expiresInSelect.value;
         let customTime = null;
-        if (expiresIn === 'custom') { const d = new Date(customExpiresInput.value); if (isNaN(d.getTime())) return alert('時間無效'); customTime = d.getTime(); }
+        if (expiresIn === 'custom') { const d = new Date(customExpiresInput.value); if (isNaN(d.getTime())) return alert('时间无效'); customTime = d.getTime(); }
         try {
             const res = await axios.post('/api/share/create', { itemId: id, itemType: type, expiresIn, customExpiresAt: customTime, password: sharePasswordInput.value });
             if (res.data.success) {
@@ -632,46 +594,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 const link = `${window.location.origin}${res.data.link}`;
                 shareLinkContainer.textContent = link; copyLinkBtn.dataset.link = link;
             }
-        } catch (e) { alert('分享失敗'); }
+        } catch (e) { alert('分享失败'); }
     });
-    copyLinkBtn.addEventListener('click', () => navigator.clipboard.writeText(copyLinkBtn.dataset.link).then(() => alert('已複製')));
+    copyLinkBtn.addEventListener('click', () => navigator.clipboard.writeText(copyLinkBtn.dataset.link).then(() => alert('已复制')));
     closeShareModalBtn.onclick = cancelShareBtn.onclick = () => shareModal.style.display = 'none';
 
-    // =================================================================================
-    // 9. 上傳功能 (封裝為通用函數)
-    // =================================================================================
-
-    // 通用上傳執行函數
+    // 9. 上传功能 (拖拽与按钮共用)
     async function executeUpload(files, targetEncryptedId) {
-        if (!files || files.length === 0) return alert('請選擇至少一個文件');
-        
-        // 如果沒有指定目標ID，使用當前ID；如果當前ID為空（如根目錄錯誤），則留空由後端處理默認
+        if (!files || files.length === 0) return alert('请选择至少一个文件');
         const folderId = targetEncryptedId || currentFolderId;
-        
         const formData = new FormData();
-        
-        // 處理文件列表 (Array 或 FileList)
-        // 為了防止同名覆蓋，如果文件有 path 屬性 (webkitRelativePath)，可以考慮追加到文件名
-        // 這裡暫時簡單處理
         let fileCount = 0;
+        
         if (files instanceof FileList) {
             for(let i=0; i<files.length; i++) { formData.append('files', files[i]); fileCount++; }
         } else if (Array.isArray(files)) {
             files.forEach(f => { formData.append('files', f); fileCount++; });
         } else {
-            // 單個文件
-            formData.append('files', files);
-            fileCount = 1;
+            formData.append('files', files); fileCount = 1;
         }
 
         if (fileCount === 0) return;
 
-        // 顯示進度條
         if(uploadModal.style.display === 'none') {
-            // 如果是拖拽觸發，可以選擇顯示模態框或者只顯示全局加載
-            // 這裡簡單復用模態框裡的進度條
             uploadModal.style.display = 'block';
-            // 隱藏選擇框，只顯示進度
             document.getElementById('uploadForm').style.display = 'none';
         }
         
@@ -688,44 +634,34 @@ document.addEventListener('DOMContentLoaded', () => {
                     progressBar.textContent = percent + '%';
                 }
             });
-            
-            // 成功處理
-            // alert('上傳成功'); // 可選：拖拽時頻繁彈窗可能不友好
-            console.log('上傳結果:', res.data);
-            
-            // 延遲關閉模態框
+            console.log('上传结果:', res.data);
             setTimeout(() => {
                 uploadModal.style.display = 'none';
-                document.getElementById('uploadForm').style.display = 'block'; // 恢復表單顯示
+                document.getElementById('uploadForm').style.display = 'block';
                 uploadForm.reset();
                 progressArea.style.display = 'none';
-                
-                // 刷新視圖
                 loadFolder(currentFolderId);
                 updateQuota();
             }, 500);
-            
         } catch (error) {
-            alert('上傳失敗: ' + (error.response?.data?.message || error.message));
+            alert('上传失败: ' + (error.response?.data?.message || error.message));
             progressArea.style.display = 'none';
             uploadModal.style.display = 'none';
             document.getElementById('uploadForm').style.display = 'block';
         }
     }
 
-    // 按鈕觸發上傳
     document.getElementById('showUploadModalBtn').addEventListener('click', () => {
         uploadModal.style.display = 'block';
         document.getElementById('uploadForm').style.display = 'block';
         progressArea.style.display = 'none';
-        updateFolderSelectForUpload([]); // 更新文件夾列表
+        updateFolderSelectForUpload([]);
     });
     
     document.getElementById('closeUploadModalBtn').addEventListener('click', () => {
         uploadModal.style.display = 'none';
     });
     
-    // 表單提交上傳
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const rawFiles = [...fileInput.files, ...folderInput.files];
@@ -733,39 +669,39 @@ document.addEventListener('DOMContentLoaded', () => {
         await executeUpload(rawFiles, targetEncryptedId);
     });
 
-    // 拖拽上傳
-    dropZone.addEventListener('dragover', (e) => { 
-        e.preventDefault(); 
-        dropZoneOverlay.style.display = 'flex'; 
-    });
+    // 拖拽相关逻辑 (全屏检测)
+    let dragCounter = 0;
     
-    dropZone.addEventListener('dragleave', (e) => { 
-        e.preventDefault(); 
-        // 只有當離開的是 overlay 本身時才隱藏（防止進入子元素時閃爍）
-        if (e.target === dropZone || e.target === dropZoneOverlay) {
-             dropZoneOverlay.style.display = 'none'; 
+    window.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        dragCounter++;
+        dropZoneOverlay.style.display = 'flex';
+    });
+
+    window.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter === 0) {
+            dropZoneOverlay.style.display = 'none';
         }
     });
-    
-    // 監聽 Overlay 上的 Drop 事件
-    dropZoneOverlay.addEventListener('dragover', (e) => e.preventDefault());
-    dropZoneOverlay.addEventListener('dragleave', (e) => {
-        if (e.target === dropZoneOverlay) dropZoneOverlay.style.display = 'none';
+
+    window.addEventListener('dragover', (e) => {
+        e.preventDefault();
     });
-    dropZoneOverlay.addEventListener('drop', async (e) => { 
-        e.preventDefault(); 
-        dropZoneOverlay.style.display = 'none'; 
+
+    window.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        dropZoneOverlay.style.display = 'none';
         
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            await executeUpload(files, currentFolderId);
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            await executeUpload(e.dataTransfer.files, currentFolderId);
         }
     });
 
     function updateFolderSelectForUpload(folders) {
-        // 這裡可以重新獲取所有文件夾填充下拉框
-        folderSelect.innerHTML = `<option value="${currentFolderId}">當前文件夾</option>`;
-        // 若 items 中包含文件夾，可以填充進去
+        folderSelect.innerHTML = `<option value="${currentFolderId}">当前文件夹</option>`;
         items.forEach(item => {
             if(item.type === 'folder') {
                 const op = document.createElement('option');
