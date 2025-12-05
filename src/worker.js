@@ -217,6 +217,18 @@ app.post('/api/folder/create', async (c) => {
     return c.json(res);
 });
 
+// [新增] 检查文件是否存在 (用于上传前检测冲突)
+app.post('/api/check-existence', async (c) => {
+    const { files, folderId } = await c.req.json();
+    
+    // 解密 folderId
+    const fid = parseInt(decrypt(folderId));
+    if (isNaN(fid)) return c.json({ success: false, message: '无效的 folderId' }, 400);
+    
+    const results = await data.checkFileExistence(c.get('db'), files, fid, c.get('user').id);
+    return c.json({ success: true, files: results });
+});
+
 // [重要修改] 文件上传，支持物理路径
 app.post('/upload', async (c) => {
     const db = c.get('db'); const storage = c.get('storage'); const user = c.get('user'); const config = c.get('config');
