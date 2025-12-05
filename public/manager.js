@@ -18,6 +18,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     const searchForm = document.getElementById('searchForm');
     
+    // 状态栏引用
+    const taskStatusBar = document.getElementById('taskStatusBar');
+    const taskIcon = document.getElementById('taskIcon');
+    const taskText = document.getElementById('taskText');
+    const taskProgress = document.getElementById('taskProgress');
+
     // 上传相关
     const uploadModal = document.getElementById('uploadModal');
     const uploadForm = document.getElementById('uploadForm');
@@ -69,6 +75,48 @@ document.addEventListener('DOMContentLoaded', () => {
     const previewModal = document.getElementById('previewModal');
     const modalContent = document.getElementById('modalContent');
     const closePreviewBtn = document.querySelector('#previewModal .close-button');
+
+    // =================================================================================
+    // 状态栏管理器 (新增)
+    // =================================================================================
+    const TaskManager = {
+        timer: null,
+        show: (text, iconClass = 'fas fa-spinner') => {
+            if (TaskManager.timer) clearTimeout(TaskManager.timer);
+            taskStatusBar.classList.add('active');
+            taskText.textContent = text;
+            taskIcon.className = `task-icon spinning ${iconClass}`;
+            taskIcon.classList.add('spinning');
+            taskProgress.style.width = '0%';
+        },
+        update: (percent, text) => {
+            taskProgress.style.width = percent + '%';
+            if(text) taskText.textContent = text;
+        },
+        success: (text = '完成') => {
+            taskText.textContent = text;
+            taskIcon.className = 'task-icon fas fa-check-circle'; // 停止旋转，显示打钩
+            taskIcon.style.color = '#28a745';
+            taskProgress.style.width = '100%';
+            TaskManager.hide(2000);
+        },
+        error: (text = '失败') => {
+            taskText.textContent = text;
+            taskIcon.className = 'task-icon fas fa-times-circle';
+            taskIcon.style.color = '#dc3545';
+            TaskManager.hide(3000);
+        },
+        hide: (delay = 0) => {
+            TaskManager.timer = setTimeout(() => {
+                taskStatusBar.classList.remove('active');
+                // 重置状态以便下次使用
+                setTimeout(() => {
+                    taskIcon.style.color = '';
+                    taskIcon.classList.remove('spinning');
+                }, 300);
+            }, delay);
+        }
+    };
 
     // 3. 初始化逻辑
     const pathParts = window.location.pathname.split('/');
@@ -155,10 +203,15 @@ document.addEventListener('DOMContentLoaded', () => {
     emptyTrashBtn.addEventListener('click', async () => {
         if(confirm('确定要清空回收站吗？此操作无法撤销。')) {
             try {
+                TaskManager.show('正在清空回收站...');
                 await axios.post('/api/trash/empty');
+                TaskManager.success('回收站已清空');
                 loadTrash();
                 updateQuota();
-            } catch(e) { alert('操作失败'); }
+            } catch(e) { 
+                TaskManager.error('清空失败');
+                alert('操作失败'); 
+            }
         }
     });
 
@@ -289,6 +342,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if(isTrashMode) return;
         if (item.type === 'folder') { loadFolder(item.encrypted_id); } 
         else { 
+            // 简单的下载反馈
+            TaskManager.show('正在请求下载...', 'fas fa-download');
+            setTimeout(() => TaskManager.success('下载已开始'), 2000);
+            
             const ext = item.name.split('.').pop().toLowerCase();
             if (['txt', 'md', 'js', 'html', 'css', 'json', 'xml', 'py', 'java', 'c', 'cpp', 'log', 'ini', 'conf'].includes(ext)) {
                  window.open(`/editor.html?id=${item.message_id}&name=${encodeURIComponent(item.name)}`, '_blank');
@@ -401,12 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const filename = prompt('请输入文件名 (例如: note.txt):', 'new_file.txt');
         if (!filename || !filename.trim()) return;
         const emptyFile = new File([""], filename.trim(), { type: "text/plain" });
-        
-        // 包装成带 path 的对象
-        const fileObj = {
-            file: emptyFile,
-            path: '' // 根目录
-        };
+        const fileObj = { file: emptyFile, path: '' };
         await executeUpload([fileObj], currentFolderId);
     });
 
@@ -432,16 +484,34 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm(`确定要删除选中的 ${selectedItems.size} 个项目吗？`)) return;
         const files = []; const folders = [];
         selectedItems.forEach(id => { const [type, realId] = parseItemId(id); if (type === 'file') files.push(realId); else folders.push(realId); });
-        try { await axios.post('/api/delete', { files, folders, permanent: false }); selectedItems.clear(); loadFolder(currentFolderId); updateQuota(); } 
-        catch (error) { alert('删除失败'); }
+        try { 
+            TaskManager.show('正在删除...', 'fas fa-trash');
+            await axios.post('/api/delete', { files, folders, permanent: false }); 
+            selectedItems.clear(); 
+            loadFolder(currentFolderId); 
+            updateQuota(); 
+            TaskManager.success('删除成功');
+        } catch (error) { 
+            TaskManager.error('删除失败');
+            alert('删除失败'); 
+        }
     });
 
     restoreBtn.addEventListener('click', async () => {
         if (selectedItems.size === 0) return alert('请先选择要还原的项目');
         const files = []; const folders = [];
         selectedItems.forEach(id => { const [type, realId] = parseItemId(id); if (type === 'file') files.push(realId); else folders.push(realId); });
-        try { await axios.post('/api/trash/restore', { files, folders }); selectedItems.clear(); loadTrash(); updateQuota(); } 
-        catch (error) { alert('还原失败'); }
+        try { 
+            TaskManager.show('正在还原...', 'fas fa-trash-restore');
+            await axios.post('/api/trash/restore', { files, folders }); 
+            selectedItems.clear(); 
+            loadTrash(); 
+            updateQuota(); 
+            TaskManager.success('还原成功');
+        } catch (error) { 
+            TaskManager.error('还原失败');
+            alert('还原失败'); 
+        }
     });
 
     deleteForeverBtn.addEventListener('click', async () => {
@@ -449,8 +519,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm('确定要永久删除吗？此操作无法撤销！')) return;
         const files = []; const folders = [];
         selectedItems.forEach(id => { const [type, realId] = parseItemId(id); if (type === 'file') files.push(realId); else folders.push(realId); });
-        try { await axios.post('/api/delete', { files, folders, permanent: true }); selectedItems.clear(); loadTrash(); updateQuota(); } 
-        catch (error) { alert('永久删除失败'); }
+        try { 
+            TaskManager.show('正在永久删除...', 'fas fa-times');
+            await axios.post('/api/delete', { files, folders, permanent: true }); 
+            selectedItems.clear(); 
+            loadTrash(); 
+            updateQuota(); 
+            TaskManager.success('已永久删除');
+        } catch (error) { 
+            TaskManager.error('操作失败');
+            alert('永久删除失败'); 
+        }
     });
 
     document.getElementById('renameBtn').addEventListener('click', async () => {
@@ -467,6 +546,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (selectedItems.size !== 1) return;
         const idStr = Array.from(selectedItems)[0]; const [type, id] = parseItemId(idStr);
         if (type !== 'file') return alert('只能下载文件');
+        
+        TaskManager.show('正在请求下载...', 'fas fa-download');
+        setTimeout(() => TaskManager.success('下载已开始'), 1500);
         window.open(`/download/proxy/${id}`, '_blank');
     });
     
@@ -485,6 +567,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!item || type !== 'file') return;
         const ext = item.name.split('.').pop().toLowerCase();
         const downloadUrl = `/download/proxy/${id}`;
+        
+        TaskManager.show('正在加载预览...', 'fas fa-eye');
+        
         let content = '';
         if (['jpg','jpeg','png','gif','webp','svg'].includes(ext)) content = `<img src="${downloadUrl}" style="max-width:100%; max-height:80vh;">`;
         else if (['mp4','webm'].includes(ext)) content = `<video src="${downloadUrl}" controls style="max-width:100%; max-height:80vh;"></video>`;
@@ -496,6 +581,8 @@ document.addEventListener('DOMContentLoaded', () => {
                  content = `<pre>${escapeHtml(res.data)}</pre>`;
              } catch(e) { content = `<p style="color:red">无法预览: ${e.message}</p>`; }
         } else content = `<div class="no-preview"><i class="fas fa-file" style="font-size:48px;margin-bottom:20px;"></i><p>不支持预览</p><a href="${downloadUrl}" class="upload-link-btn">下载文件</a></div>`;
+        
+        TaskManager.success('预览就绪');
         modalContent.innerHTML = content; previewModal.style.display = 'flex';
     });
     closePreviewBtn.onclick = () => previewModal.style.display = 'none';
@@ -545,73 +632,49 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     // =================================================================================
-    // 9. 上传功能 (增强版：支持递归目录创建)
+    // 9. 上传功能 (增强版：支持递归目录创建 + 状态栏)
     // =================================================================================
 
-    // 辅助函数：静默获取某文件夹的子内容，用于查找子文件夹 ID
     async function getFolderContents(encryptedId) {
         try {
             const res = await axios.get(`/api/folder/${encryptedId}`);
-            return res.data.contents; // { folders: [], files: [] }
+            return res.data.contents;
         } catch (e) {
             console.error('获取目录失败:', encryptedId, e);
             return { folders: [], files: [] };
         }
     }
 
-    // 核心函数：根据相对路径，递归查找或创建文件夹，返回目标文件夹的 encryptedId
-    // pathStr: "SubFolder/Images", rootId: 当前所在目录ID
     async function ensureRemotePath(pathStr, rootId) {
         if (!pathStr || pathStr === '' || pathStr === '.') return rootId;
         
         const parts = pathStr.split('/').filter(p => p.trim() !== '');
         let currentId = rootId;
 
-        // 缓存当前层级的内容，避免重复请求
-        // 简单起见，每次都重新获取当前层级列表，确保最新
-        
         for (const part of parts) {
-            // 1. 获取当前目录内容
             const contents = await getFolderContents(currentId);
-            
-            // 2. 查找是否存在同名文件夹
             const existingFolder = contents.folders.find(f => f.name === part);
             
             if (existingFolder) {
                 currentId = existingFolder.encrypted_id;
-                // 更新 UI 状态提示
-                const status = document.getElementById('uploadStatusText');
-                if(status) status.textContent = `进入目录: ${part}`;
+                TaskManager.show(`进入目录: ${part}`, 'fas fa-folder-open');
             } else {
-                // 3. 不存在，创建它
-                const status = document.getElementById('uploadStatusText');
-                if(status) status.textContent = `创建目录: ${part}`;
-                
+                TaskManager.show(`创建目录: ${part}`, 'fas fa-folder-plus');
                 try {
                     await axios.post('/api/folder/create', { name: part, parentId: currentId });
-                    
-                    // 创建后，再次获取列表以拿到新 ID
-                    // 注意：因为 API 可能不直接返回加密 ID，所以必须重新 fetch
                     const updatedContents = await getFolderContents(currentId);
                     const newFolder = updatedContents.folders.find(f => f.name === part);
-                    
-                    if (newFolder) {
-                        currentId = newFolder.encrypted_id;
-                    } else {
-                        throw new Error(`无法获取新创建目录 ID: ${part}`);
-                    }
+                    if (newFolder) currentId = newFolder.encrypted_id;
+                    else throw new Error(`无法获取新创建目录 ID: ${part}`);
                 } catch (e) {
                     console.error('递归创建失败', e);
-                    throw e; // 中断上传
+                    throw e;
                 }
             }
         }
-        
         return currentId;
     }
 
-    // 辅助：递归扫描 DataTransferItem (拖拽用)
-    // 返回带 path 属性的对象数组: [{ file: File, path: "A/B" }]
     async function scanEntry(entry, path = '') {
         if (entry.isFile) {
             return new Promise((resolve) => {
@@ -639,7 +702,6 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             await readAllEntries();
-            
             let files = [];
             for (const subEntry of entries) {
                 const subFiles = await scanEntry(subEntry, currentPath);
@@ -657,7 +719,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (item.kind === 'file') {
                 const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : (item.getAsEntry ? item.getAsEntry() : null);
                 if (entry) {
-                    // 如果是第一层，path 留空，否则文件名会包含自身
                     const entryFiles = await scanEntry(entry, '');
                     files = files.concat(entryFiles);
                 } else {
@@ -669,52 +730,33 @@ document.addEventListener('DOMContentLoaded', () => {
         return files;
     }
 
-    /**
-     * 通用上传执行函数 (队列模式 + 目录结构保持)
-     * fileObjects: 数组，每个元素可能是 File (来自 input) 或者 { file: File, path: "A/B" } (来自拖拽)
-     */
     async function executeUpload(inputItems, targetEncryptedId) {
         if (!inputItems || inputItems.length === 0) return alert('请选择至少一个文件');
         
         const rootId = targetEncryptedId || currentFolderId;
-        
-        // 1. 标准化输入为 { file, path } 结构
         let queue = [];
         
-        // 处理 FileList (来自普通 input multiple)
         if (inputItems instanceof FileList) {
-            for(let i=0; i<inputItems.length; i++) {
-                // 普通 input 选文件没有目录结构
-                queue.push({ file: inputItems[i], path: '' });
-            }
-        } 
-        // 处理 input webkitdirectory (来自文件夹 input)
-        else if (Array.isArray(inputItems) && inputItems.length > 0 && inputItems[0] instanceof File) {
+            for(let i=0; i<inputItems.length; i++) queue.push({ file: inputItems[i], path: '' });
+        } else if (Array.isArray(inputItems) && inputItems.length > 0 && inputItems[0] instanceof File) {
              inputItems.forEach(f => {
-                 // webkitRelativePath 格式: "Folder/Sub/File.txt"
-                 // 我们需要 path: "Folder/Sub"
                  const rel = f.webkitRelativePath || '';
                  const pathPart = rel.substring(0, rel.lastIndexOf('/'));
                  queue.push({ file: f, path: pathPart });
              });
-        }
-        // 处理拖拽过来的自定义对象 { file, path }
-        else if (Array.isArray(inputItems)) {
-            queue = inputItems; // 已经是标准化格式
+        } else if (Array.isArray(inputItems)) {
+            queue = inputItems;
         }
 
         if (queue.length === 0) return;
 
-        // 2. 初始化 UI
+        // 初始化 UI (显示模态框)
         if(uploadModal.style.display === 'none') {
             uploadModal.style.display = 'block';
             document.getElementById('uploadForm').style.display = 'none';
         }
-        
         progressArea.style.display = 'block';
         const progressBar = document.getElementById('progressBar');
-        
-        // 状态文字容器
         let statusText = document.getElementById('uploadStatusText');
         if (!statusText) {
             statusText = document.createElement('div');
@@ -724,53 +766,46 @@ document.addEventListener('DOMContentLoaded', () => {
             statusText.id = 'uploadStatusText';
             progressArea.appendChild(statusText);
         }
-        statusText.textContent = '分析目录结构...';
+        
+        // 激活底部状态栏
+        TaskManager.show('准备上传...', 'fas fa-cloud-upload-alt');
 
-        progressBar.style.width = '0%';
-        progressBar.textContent = '0%';
-
-        // 3. 计算总大小
         const totalBytes = queue.reduce((acc, item) => acc + item.file.size, 0);
         let loadedBytesGlobal = 0;
-        
         let successCount = 0;
         let failCount = 0;
         const errors = [];
-
-        // 路径缓存: pathString -> encryptedId，避免重复 API 请求
         const pathCache = {}; 
-        pathCache[''] = rootId; // 根路径直接映射
+        pathCache[''] = rootId;
 
-        // 4. 逐个处理 (串行，确保文件夹创建顺序)
         for (let i = 0; i < queue.length; i++) {
             const item = queue[i];
             const file = item.file;
-            const relPath = item.path || ''; // 相对路径，如 "A/B"
+            const relPath = item.path || '';
             
-            // 获取目标文件夹 ID
             let targetFolderId = rootId;
             
+            // 状态栏更新：当前文件
+            const statusMsg = `[${i + 1}/${queue.length}] 上传: ${file.name}`;
+            statusText.textContent = statusMsg;
+            TaskManager.show(statusMsg, 'fas fa-file-upload');
+
             try {
                 if (pathCache[relPath]) {
                     targetFolderId = pathCache[relPath];
                 } else {
-                    // 如果缓存里没有，去递归创建/查找
-                    // 优化：如果 relPath 是 "A/B"，先检查 "A" 是否在缓存
                     targetFolderId = await ensureRemotePath(relPath, rootId);
                     pathCache[relPath] = targetFolderId;
                 }
             } catch (e) {
-                console.error(`无法创建目录结构: ${relPath}`, e);
+                console.error(`无法创建目录: ${relPath}`, e);
                 failCount++;
                 errors.push(`目录创建失败: ${relPath}`);
-                continue; // 跳过此文件
+                continue;
             }
 
-            // 执行上传
             const formData = new FormData();
             formData.append('files', file, file.name);
-
-            statusText.textContent = `[${i + 1}/${queue.length}] 上传: ${file.name}`;
 
             try {
                 let currentFileLoaded = 0;
@@ -784,24 +819,27 @@ document.addEventListener('DOMContentLoaded', () => {
                             const percent = Math.min(100, Math.round((loadedBytesGlobal * 100) / totalBytes));
                             progressBar.style.width = percent + '%';
                             progressBar.textContent = percent + '%';
+                            TaskManager.update(percent, statusMsg); // 同步更新底部状态栏
                         }
                     }
                 });
                 successCount++;
             } catch (error) {
-                console.error(`文件 ${file.name} 上传失败:`, error);
+                console.error(`上传失败: ${file.name}`, error);
                 failCount++;
                 errors.push(`${file.name}: ${error.response?.data?.message || error.message}`);
             }
         }
 
-        // 5. 结果处理
+        // 结果处理
         let resultMsg = `上传结束。\n成功: ${successCount}\n失败: ${failCount}`;
         if (failCount > 0) {
             resultMsg += '\n\n错误详情:\n' + errors.join('\n').slice(0, 200) + '...';
             alert(resultMsg);
+            TaskManager.error('部分上传失败');
         } else {
             console.log(resultMsg);
+            TaskManager.success('所有文件上传完成');
         }
 
         setTimeout(() => {
@@ -816,6 +854,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     }
 
+    // 绑定 Move 按钮到 TaskManager
+    confirmMoveBtn.addEventListener('click', async () => {
+        if (!selectedMoveTargetId) return;
+        const files = []; const folders = [];
+        selectedItems.forEach(id => { const [type, realId] = parseItemId(id); if (type === 'file') files.push(realId); else folders.push(realId); });
+        try {
+            confirmMoveBtn.textContent = '移动中...';
+            TaskManager.show('正在移动...', 'fas fa-arrows-alt'); // 状态栏
+            
+            await axios.post('/api/move', { files, folders, targetFolderId: selectedMoveTargetId });
+            
+            alert('移动成功');
+            TaskManager.success('移动完成'); // 状态栏
+            moveModal.style.display = 'none';
+            selectedItems.clear();
+            loadFolder(currentFolderId);
+        } catch (e) {
+            alert('移动失败: ' + (e.response?.data?.message || e.message));
+            TaskManager.error('移动失败');
+        } finally {
+            confirmMoveBtn.textContent = '确定移动';
+        }
+    });
+
     document.getElementById('showUploadModalBtn').addEventListener('click', () => {
         uploadModal.style.display = 'block';
         document.getElementById('uploadForm').style.display = 'block';
@@ -827,53 +889,26 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadModal.style.display = 'none';
     });
     
-    // 表单提交事件 (区分文件和文件夹)
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         
         let allItems = [];
-        
-        // 处理普通文件
         if (fileInput.files.length > 0) {
-            // 普通 input 的 webkitRelativePath 为空
             allItems = allItems.concat(Array.from(fileInput.files).map(f => ({ file: f, path: '' })));
         }
-        
-        // 处理文件夹
         if (folderInput.files.length > 0) {
-            // webkitdirectory 的 input 会带 webkitRelativePath
-            // e.g. "Docs/work/resume.pdf"
             allItems = allItems.concat(Array.from(folderInput.files));
-            // executeUpload 内部会处理 File 对象带 webkitRelativePath 的情况
         }
         
-        // 目标：如果下拉框选了，就用选的；否则用当前目录
         const targetId = folderSelect.value || currentFolderId;
-        
         await executeUpload(allItems, targetId);
     });
 
-    // 拖拽相关逻辑
+    // 拖拽逻辑
     let dragCounter = 0;
-    
-    window.addEventListener('dragenter', (e) => {
-        e.preventDefault();
-        dragCounter++;
-        dropZoneOverlay.style.display = 'flex';
-    });
-
-    window.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        dragCounter--;
-        if (dragCounter === 0) {
-            dropZoneOverlay.style.display = 'none';
-        }
-    });
-
-    window.addEventListener('dragover', (e) => {
-        e.preventDefault();
-    });
-
+    window.addEventListener('dragenter', (e) => { e.preventDefault(); dragCounter++; dropZoneOverlay.style.display = 'flex'; });
+    window.addEventListener('dragleave', (e) => { e.preventDefault(); dragCounter--; if (dragCounter === 0) dropZoneOverlay.style.display = 'none'; });
+    window.addEventListener('dragover', (e) => { e.preventDefault(); });
     window.addEventListener('drop', async (e) => {
         e.preventDefault();
         dragCounter = 0;
@@ -882,11 +917,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const items = e.dataTransfer.items;
         if (items && items.length > 0) {
             const files = await scanDataTransferItems(items);
-            if (files.length > 0) {
-                await executeUpload(files, currentFolderId);
-            }
+            if (files.length > 0) await executeUpload(files, currentFolderId);
         } else if (e.dataTransfer.files.length > 0) {
-            // 回退兼容: 转换为标准结构
             const list = Array.from(e.dataTransfer.files).map(f => ({ file: f, path: '' }));
             await executeUpload(list, currentFolderId);
         }
