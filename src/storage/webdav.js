@@ -1,10 +1,25 @@
 export class WebDAVStorage {
     constructor(config) {
+        // 安全检查：防止 config 为空导致崩溃
+        if (!config) {
+            throw new Error("WebDAV 配置对象为空");
+        }
+        if (!config.endpoint) {
+            // 如果是在初始化阶段没有配置，抛出明确错误，让 Worker 能够捕获并提示用户
+            throw new Error("WebDAV Endpoint 未填写，请进入后台设置");
+        }
+
         // 去除 endpoint 末尾的斜杠
         this.endpoint = config.endpoint.endsWith('/') ? config.endpoint.slice(0, -1) : config.endpoint;
-        this.username = config.username;
-        this.password = config.password;
-        this.authHeader = 'Basic ' + btoa(`${this.username}:${this.password}`);
+        this.username = config.username || '';
+        this.password = config.password || '';
+        
+        // 只有当有用户名密码时才生成 Auth Header (某些内网 WebDAV 可能无需密码)
+        if (this.username || this.password) {
+            this.authHeader = 'Basic ' + btoa(`${this.username}:${this.password}`);
+        } else {
+            this.authHeader = null;
+        }
     }
 
     async ensureDir(path) {
@@ -12,42 +27,43 @@ export class WebDAVStorage {
         let currentUrl = this.endpoint;
         
         for (const part of parts) {
-            currentUrl += '/' + encodeURIComponent(part); // WebDAV 路径必须编码
+            currentUrl += '/' + encodeURIComponent(part); 
             
+            const headers = { 'Depth': '0' };
+            if (this.authHeader) headers['Authorization'] = this.authHeader;
+
             // 检查目录是否存在
             const check = await fetch(currentUrl, {
                 method: 'PROPFIND',
-                headers: { 
-                    'Authorization': this.authHeader,
-                    'Depth': '0'
-                }
+                headers: headers
             });
             
             // 如果不存在，创建它
             if (check.status === 404) {
+                const mkHeaders = {};
+                if (this.authHeader) mkHeaders['Authorization'] = this.authHeader;
+                
                 await fetch(currentUrl, {
                     method: 'MKCOL',
-                    headers: { 'Authorization': this.authHeader }
+                    headers: mkHeaders
                 });
             }
         }
     }
 
     async upload(file, fileName, contentType, userId, folderId) {
-        // WebDAV 需要先确保存储路径的文件夹存在
         const dirPath = `${userId}/${folderId}`;
         await this.ensureDir(dirPath);
         
         const key = `${dirPath}/${fileName}`;
-        // 注意：WebDAV 的 URL 路径部分通常需要编码
         const url = `${this.endpoint}/${userId}/${folderId}/${encodeURIComponent(fileName)}`;
         
+        const headers = { 'Content-Type': contentType };
+        if (this.authHeader) headers['Authorization'] = this.authHeader;
+
         const res = await fetch(url, {
             method: 'PUT',
-            headers: {
-                'Authorization': this.authHeader,
-                'Content-Type': contentType
-            },
+            headers: headers,
             body: file
         });
 
@@ -56,21 +72,22 @@ export class WebDAVStorage {
         }
 
         return {
-            fileId: key, // 存储相对路径作为 ID
+            fileId: key, 
             thumbId: null
         };
     }
 
     async download(fileId, userId) {
-        // fileId 是相对路径，例如 "1/5/hello.txt"
-        // 拼接 URL 时需要对每一段进行编码，或者 fileId 本身在生成时已规范化
-        // 这里简单处理：将 fileId 拆分并编码
+        // 简单处理：将 fileId (相对路径) 拆分并编码
         const encodedPath = fileId.split('/').map(encodeURIComponent).join('/');
         const url = `${this.endpoint}/${encodedPath}`;
 
+        const headers = {};
+        if (this.authHeader) headers['Authorization'] = this.authHeader;
+
         const res = await fetch(url, {
             method: 'GET',
-            headers: { 'Authorization': this.authHeader }
+            headers: headers
         });
 
         if (!res.ok) throw new Error(`WebDAV Download Failed: ${res.status}`);
@@ -86,22 +103,23 @@ export class WebDAVStorage {
     }
 
     async remove(files, folders, userId) {
-        // WebDAV 逐个删除
         const targets = files.map(f => f.file_id);
         
         for (const path of targets) {
             const encodedPath = path.split('/').map(encodeURIComponent).join('/');
             const url = `${this.endpoint}/${encodedPath}`;
+            
+            const headers = {};
+            if (this.authHeader) headers['Authorization'] = this.authHeader;
+
             await fetch(url, {
                 method: 'DELETE',
-                headers: { 'Authorization': this.authHeader }
+                headers: headers
             });
         }
     }
 
     async list(prefix) {
-        // WebDAV 的 PROPFIND 返回 XML，解析较为复杂且消耗资源
-        // 暂不支持自动扫描 WebDAV 导入，仅记录日志
         console.warn("WebDAV storage scan is not implemented yet.");
         return [];
     }
