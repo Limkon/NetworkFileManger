@@ -40,13 +40,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressArea = document.getElementById('progressArea');
     const fileInput = document.getElementById('fileInput');
     const folderInput = document.getElementById('folderInput');
-    const uploadStatusText = document.createElement('div'); 
-    uploadStatusText.id = 'uploadStatusText';
-    uploadStatusText.style.textAlign = 'center';
-    uploadStatusText.style.fontSize = '12px';
-    uploadStatusText.style.marginTop = '5px';
-    // 防止重复添加
-    if(progressArea && !document.getElementById('uploadStatusText')) {
+    
+    // 动态创建上传状态文本 (如果不存在)
+    let uploadStatusText = document.getElementById('uploadStatusText');
+    if (!uploadStatusText && progressArea) {
+        uploadStatusText = document.createElement('div');
+        uploadStatusText.id = 'uploadStatusText';
+        uploadStatusText.style.textAlign = 'center';
+        uploadStatusText.style.fontSize = '12px';
+        uploadStatusText.style.marginTop = '5px';
         progressArea.appendChild(uploadStatusText);
     }
     
@@ -307,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
         div.oncontextmenu = (e) => handleContextMenu(e, item);
         div.ondblclick = () => handleItemDblClick(item);
 
-        const iconClass = getIconClass(item);
+        const iconClass = getIconClass(item); // 之前报错的原因，现在函数已补全
         const iconColor = item.type === 'folder' ? '#fbc02d' : '#007bff';
 
         div.innerHTML = `
@@ -328,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
         div.oncontextmenu = (e) => handleContextMenu(e, item);
         div.ondblclick = () => handleItemDblClick(item);
 
-        const iconClass = getIconClass(item);
+        const iconClass = getIconClass(item); // 之前报错的原因，现在函数已补全
         const dateStr = item.date ? new Date(item.date).toLocaleString() : (item.deleted_at ? new Date(item.deleted_at).toLocaleString() : '-');
         const sizeStr = item.size !== undefined ? formatSize(item.size) : '-';
 
@@ -1046,7 +1048,9 @@ document.addEventListener('DOMContentLoaded', () => {
             
             let targetFolderId = rootId;
             const statusMsg = `[${i + 1}/${queue.length}] 上传: ${file.name}`;
-            uploadStatusText.textContent = statusMsg;
+            if(document.getElementById('uploadStatusText')) {
+                document.getElementById('uploadStatusText').textContent = statusMsg;
+            }
             TaskManager.show(statusMsg, 'fas fa-file-upload');
 
             try {
@@ -1124,7 +1128,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('uploadForm').style.display = 'block';
             uploadForm.reset();
             progressArea.style.display = 'none';
-            uploadStatusText.textContent = '';
+            if(document.getElementById('uploadStatusText')) {
+                document.getElementById('uploadStatusText').textContent = '';
+            }
             
             loadFolder(currentFolderId);
             updateQuota();
@@ -1195,7 +1201,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function escapeHtml(text) { if (!text) return ''; return text.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[m]); }
     function formatSize(bytes) { if (bytes === 0) return '0 B'; const k = 1024; const sizes = ['B', 'KB', 'MB', 'GB', 'TB']; const i = Math.floor(Math.log(bytes) / Math.log(k)); return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]; }
     
-    // 获取文件图标 (已修复 Missing Function)
+    // 获取文件图标 (已补全)
     function getIconClass(item) {
         if (item.type === 'folder') return 'fas fa-folder';
         const ext = item.name.split('.').pop().toLowerCase();
