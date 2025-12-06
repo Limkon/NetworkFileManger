@@ -1,3 +1,4 @@
+// src/worker.js
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { serveStatic } from 'hono/cloudflare-workers';
@@ -11,9 +12,7 @@ import { initCrypto, encrypt, decrypt } from './crypto.js';
 
 const app = new Hono();
 
-// =================================================================================
-// 1. 全局错误处理
-// =================================================================================
+// ... (错误处理和静态资源路由保持不变) ...
 app.onError((err, c) => {
     console.error('❌ [FATAL] Server Error:', err);
     if (c.req.path.startsWith('/api') || c.req.header('accept')?.includes('json')) {
@@ -22,47 +21,33 @@ app.onError((err, c) => {
     return c.text(`❌ 系统严重错误 (500):\n\n${err.message}\n\nStack:\n${err.stack}`, 500);
 });
 
-// =================================================================================
-// 2. 静态页面路由 (最高优先级，防止被中间件误拦)
-// =================================================================================
-// 显式定义页面路由，确保 serveStatic 优先执行
 app.get('/login', serveStatic({ path: 'login.html', manifest }));
 app.get('/register', serveStatic({ path: 'register.html', manifest }));
 app.get('/admin', serveStatic({ path: 'admin.html', manifest }));
 app.get('/editor', serveStatic({ path: 'editor.html', manifest }));
-// SPA 页面路由
 app.get('/view/*', serveStatic({ path: 'manager.html', manifest }));
 
-// 分享页面模板
 const SHARE_HTML = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>分享的文件</title><link rel="stylesheet" href="/manager.css"><link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css"><style>.container{max-width:800px;margin:50px auto;padding:20px;background:#fff;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}.locked-screen{text-align:center}.file-icon{font-size:64px;color:#007bff;margin-bottom:20px}.btn{display:inline-block;padding:10px 20px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px;cursor:pointer;border:none}.list-item{display:flex;align-items:center;padding:10px;border-bottom:1px solid #eee}.list-item i{margin-right:10px;width:20px;text-align:center}.error-msg{color:red;margin-top:10px}</style></head><body><div class="container" id="app"><h2 style="text-align:center;">正在加載...</h2></div><script>const pathParts=window.location.pathname.split('/');const token=pathParts.pop();const app=document.getElementById('app');async function load(){try{const res=await fetch('/api/public/share/'+token);const data=await res.json();if(!res.ok)throw new Error(data.message||'加載失敗');if(data.isLocked&&!data.isUnlocked){renderPasswordForm(data.name)}else if(data.type==='file'){renderFile(data)}else{renderFolder(data)}}catch(e){app.innerHTML='<div style="text-align:center;color:red;"><h3>錯誤</h3><p>'+e.message+'</p></div>'}}function renderPasswordForm(name){app.innerHTML=\`<div class="locked-screen"><i class="fas fa-lock file-icon"></i><h3>\${name} 受密碼保護</h3><div style="margin:20px 0;"><input type="password" id="pass" placeholder="請輸入密碼" style="padding:10px; width:200px;"><button class="btn" onclick="submitPass()">解鎖</button></div><p id="err" class="error-msg"></p></div>\`}window.submitPass=async()=>{const pass=document.getElementById('pass').value;const res=await fetch('/api/public/share/'+token+'/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pass})});const d=await res.json();if(d.success)load();else document.getElementById('err').textContent=d.message};function renderFile(data){app.innerHTML=\`<div style="text-align:center;"><i class="fas fa-file file-icon"></i><h2>\${data.name}</h2><p>大小: \${(data.size/1024/1024).toFixed(2)} MB</p><p>時間: \${new Date(data.date).toLocaleString()}</p><div style="margin-top:30px;"><a href="\${data.downloadUrl}" class="btn"><i class="fas fa-download"></i> 下載文件</a></div></div>\`}function renderFolder(data){let html=\`<h3>\${data.name} (文件夾)</h3><div class="list">\`;if(data.folders)data.folders.forEach(f=>{html+=\`<div class="list-item"><i class="fas fa-folder" style="color:#fbc02d;"></i> <span>\${f.name}</span></div>\`});if(data.files)data.files.forEach(f=>{html+=\`<div class="list-item"><i class="fas fa-file" style="color:#555;"></i> <span>\${f.name}</span> <span style="margin-left:auto;font-size:12px;color:#999;">\${(f.size/1024).toFixed(1)} KB</span></div>\`});html+='</div>';app.innerHTML=html}load()</script></body></html>`;
 app.get('/share/view/:type/:token', (c) => c.html(SHARE_HTML));
 
-// =================================================================================
-// 3. 环境初始化中间件 (注入核心依赖)
-// =================================================================================
 app.use('*', async (c, next) => {
     try {
-        // 环境变量检查
         if (!c.env.DB) throw new Error("缺少 D1 数据库绑定 (DB)");
         if (!c.env.CONFIG_KV) throw new Error("缺少 KV 绑定 (CONFIG_KV)");
         if (!c.env.SESSION_SECRET) throw new Error("缺少环境变量 SESSION_SECRET");
 
-        // 初始化工具
         initCrypto(c.env.SESSION_SECRET);
         c.set('db', new Database(c.env.DB));
         c.set('configManager', new ConfigManager(c.env.CONFIG_KV));
 
-        // 加载配置
         const config = await c.get('configManager').load();
         c.set('config', config);
 
-        // 初始化存储 (带容错机制，防止白屏)
         try {
             const storage = initStorage(config, c.env); 
             c.set('storage', storage);
         } catch (storageErr) {
             console.warn("⚠️ 存储初始化警告:", storageErr.message);
-            // 注入伪存储对象，允许应用启动进入 Admin
             c.set('storage', { 
                 list: async () => [], 
                 upload: async () => { throw new Error(`存储配置错误: ${storageErr.message}`); },
@@ -74,25 +59,13 @@ app.use('*', async (c, next) => {
     } catch (e) { throw e; }
 });
 
-// =================================================================================
-// 4. 认证中间件
-// =================================================================================
 const authMiddleware = async (c, next) => {
     const url = new URL(c.req.url);
     const path = url.pathname;
-
-    // 1. 放行静态资源后缀 (以防万一 serveStatic 没覆盖到)
-    if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|eot)$/)) {
-        return await next();
-    }
-
-    // 2. 放行公开路径
+    if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|eot)$/)) return await next();
     const publicPaths = ['/login', '/register', '/setup', '/api/public', '/share'];
-    if (publicPaths.some(p => path.startsWith(p))) {
-        return await next();
-    }
+    if (publicPaths.some(p => path.startsWith(p))) return await next();
 
-    // 3. 校验 Token
     const token = getCookie(c, 'remember_me');
     if (!token) {
         if (path.startsWith('/api')) return c.json({ success: false, message: '未登录' }, 401);
@@ -106,8 +79,6 @@ const authMiddleware = async (c, next) => {
         if (path.startsWith('/api')) return c.json({ success: false, message: '会话已过期' }, 401);
         return c.redirect('/login');
     }
-
-    // 注入用户信息
     c.set('user', { id: user.user_id, username: user.username, isAdmin: !!user.is_admin });
     await next();
 };
@@ -119,10 +90,7 @@ const adminMiddleware = async (c, next) => {
     await next();
 };
 
-// =================================================================================
-// 5. 核心业务路由 (Setup, Login, Register)
-// =================================================================================
-
+// ... (Setup, Login, Register 路由保持不变) ...
 app.get('/setup', async (c) => {
     try {
         await c.get('db').initDB();
@@ -184,10 +152,7 @@ app.get('/', async (c) => {
 });
 app.get('/fix-root', async (c) => c.redirect('/'));
 
-// =================================================================================
-// 6. 文件操作 API (核心功能)
-// =================================================================================
-
+// ... (文件操作 API 保持不变) ...
 app.get('/api/folder/:encryptedId', async (c) => {
     try {
         const id = parseInt(decrypt(c.req.param('encryptedId')));
@@ -197,10 +162,7 @@ app.get('/api/folder/:encryptedId', async (c) => {
         return c.json({ contents: res, path });
     } catch (e) { return c.json({ success: false, message: e.message }, 500); }
 });
-
 app.get('/api/folders', async (c) => c.json(await data.getAllFolders(c.get('db'), c.get('user').id)));
-
-// 上传接口 (带详细日志)
 app.post('/upload', async (c) => {
     console.log("🚀 [Upload] 收到上传请求");
     const db = c.get('db'); 
@@ -234,19 +196,15 @@ app.post('/upload', async (c) => {
                 let finalName = file.name;
                 let existing = null;
                 
-                // 1. 验重
                 if(conflictMode === 'overwrite') {
-                    // 使用 SELECT * 获取完整信息
                     existing = await db.get("SELECT * FROM files WHERE fileName=? AND folder_id=? AND user_id=? AND (is_deleted=0 OR is_deleted IS NULL)", [file.name, folderId, user.id]);
                 } else {
                     finalName = await data.getUniqueName(db, folderId, file.name, user.id, 'file');
                 }
 
-                // 2. 上传
                 console.log(`   [Storage] 上传至: ${finalName}`);
                 const up = await storage.upload(file, finalName, file.type, user.id, folderId, config);
                 
-                // 3. 数据库
                 if(existing) {
                     console.log(`   [DB] 更新记录 ID: ${existing.message_id}`);
                     await data.updateFile(db, BigInt(existing.message_id), {
@@ -272,7 +230,6 @@ app.post('/upload', async (c) => {
         return c.json({success:false, message:e.message}, 500);
     }
 });
-
 app.get('/download/proxy/:messageId', async (c) => {
     const user = c.get('user');
     const files = await data.getFilesByIds(c.get('db'), [BigInt(c.req.param('messageId'))], user.id);
@@ -285,7 +242,6 @@ app.get('/download/proxy/:messageId', async (c) => {
         return new Response(stream, { headers: h });
     } catch(e) { return c.text(e.message, 500); }
 });
-
 app.post('/api/move', async (c) => {
     const { files, folders, targetFolderId, conflictMode } = await c.req.json();
     const tid = parseInt(decrypt(targetFolderId));
@@ -295,7 +251,6 @@ app.post('/api/move', async (c) => {
         return c.json({success:true});
     } catch(e) { return c.json({success:false, message:e.message}, 500); }
 });
-
 app.get('/api/user/quota', async (c) => c.json(await data.getUserQuota(c.get('db'), c.get('user').id)));
 app.post('/api/folder/create', async (c) => {
     const { name, parentId } = await c.req.json();
@@ -342,7 +297,7 @@ app.post('/api/folder/lock', async (c) => {
 });
 
 // =================================================================================
-// 7. 管理员 API (Admin Routes) - 完整功能
+// 7. 管理员 API (Admin Routes)
 // =================================================================================
 
 app.get('/api/admin/users', adminMiddleware, async (c) => {
@@ -363,22 +318,25 @@ app.get('/api/admin/users-with-quota', adminMiddleware, async (c) => {
     }
 });
 
+// 新增接口：获取当前存储模式
+app.get('/api/admin/storage-mode', adminMiddleware, async (c) => {
+    const config = c.get('config');
+    return c.json({ mode: config.storageMode });
+});
+
 app.post('/api/admin/storage-mode', adminMiddleware, async (c) => {
     const body = await c.req.json();
     await c.get('configManager').save({ storageMode: body.mode });
     return c.json({success:true});
 });
 
-// WebDAV 配置保存 - 兼容处理
 app.get('/api/admin/webdav', adminMiddleware, async(c) => {
     const config = await c.get('configManager').load();
-    // 返回数组以适配前端可能存在的逻辑
     return c.json(config.webdav ? [config.webdav] : []);
 });
 
 app.post('/api/admin/webdav', adminMiddleware, async(c) => { 
     let webdavConfig = await c.req.json();
-    // 关键修复：如果传来的是数组，取第一个元素；如果是对象，直接使用
     if (Array.isArray(webdavConfig)) {
         webdavConfig = webdavConfig[0] || {};
     }
@@ -433,9 +391,6 @@ app.post('/api/admin/set-quota', adminMiddleware, async (c) => {
     return c.json({success:true});
 });
 
-// =================================================================================
-// 8. 静态资源兜底 (放在最后，防止拦截 API)
-// =================================================================================
 app.use('/*', serveStatic({ root: './', manifest }));
 
 export default app;
