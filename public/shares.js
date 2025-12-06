@@ -42,6 +42,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 const icon = item.type === 'folder' ? '<i class="fas fa-folder" style="color:#fbc02d;"></i>' : '<i class="fas fa-file" style="color:#007bff;"></i>';
+                
+                // 定位按钮
+                const locationBtn = item.encrypted_parent_id 
+                    ? `<a href="/view/${item.encrypted_parent_id}" class="locate-btn upload-link-btn" style="background-color: #17a2b8; color: white; padding: 5px 10px; font-size: 12px; text-decoration: none; margin-right: 5px;"><i class="fas fa-folder-open"></i> 定位</a>`
+                    : '<span style="color:#ccc;">根目录</span>';
 
                 tr.innerHTML = `
                     <td>
@@ -56,6 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </td>
                     <td>${expiresText}</td>
+                    <td>${locationBtn}</td>
                     <td>
                         <button class="cancel-share-btn upload-link-btn" data-id="${item.id || item.message_id}" data-type="${item.type}" style="background-color: #dc3545; color: white; padding: 5px 10px; font-size: 12px;">
                             <i class="fas fa-times"></i> 取消分享
