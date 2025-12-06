@@ -184,7 +184,7 @@ app.get('/api/folder/:encryptedId', async (c) => {
 
 app.get('/api/folders', async (c) => c.json(await data.getAllFolders(c.get('db'), c.get('user').id)));
 
-// === 新增: 文件存在检查 API ===
+// === 新增: 文件存在检查 API (逻辑优化版) ===
 app.post('/api/file/check', async (c) => {
     try {
         const { folderId, fileName } = await c.req.json();
@@ -195,13 +195,18 @@ app.post('/api/file/check', async (c) => {
         const db = c.get('db');
         const userId = c.get('user').id;
         
-        // 查询数据库中是否存在同名文件 (未删除的)
-        const existing = await db.get(
-            "SELECT 1 FROM files WHERE folder_id = ? AND fileName = ? AND user_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)", 
+        // 核心修正：查出所有同名文件，然后在代码层判断 is_deleted 状态
+        // 这样可以避免 SQL 逻辑在某些边缘情况下的歧义
+        const files = await db.all(
+            "SELECT is_deleted FROM files WHERE folder_id = ? AND fileName = ? AND user_id = ?", 
             [fid, fileName, userId]
         );
         
-        return c.json({ exists: !!existing });
+        // 只要有一个未删除的同名文件，就视为存在冲突
+        // 注意：SQLite 读取出来的 is_deleted 应该是数字 0 或 1
+        const exists = files.some(f => f.is_deleted === 0 || f.is_deleted === null);
+        
+        return c.json({ exists: exists });
     } catch (e) {
         console.error("Check file exist error:", e);
         return c.json({ exists: false, error: e.message });
