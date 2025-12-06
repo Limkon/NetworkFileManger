@@ -1,4 +1,4 @@
-/* public/manager.css - 完整全功能版 (已配色) */
+/* public/manager.css - 完整全功能版 (修复排版混乱) */
 
 :root {
     --primary-color: #007bff;
@@ -50,6 +50,7 @@ body {
     transition: all 0.2s;
     text-decoration: none;
     line-height: 1.5;
+    white-space: nowrap; /* 防止按钮文字换行 */
 }
 .btn:hover { background: #f8f9fa; border-color: #ccc; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -152,6 +153,7 @@ body.auth-page {
     background-color: #fff; padding: 10px 20px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     position: sticky; top: 0; z-index: 100; height: 60px;
+    flex-wrap: wrap; /* 允许导航栏换行 */
 }
 .brand { font-size: 1.2rem; font-weight: bold; color: var(--primary-color); display: flex; align-items: center; gap: 10px; }
 .search-box form { display: flex; align-items: center; }
@@ -164,56 +166,51 @@ body.auth-page {
 .user-controls { display: flex; align-items: center; gap: 5px; }
 
 /* --- 顶部导航栏按钮专属配色 (新增) --- */
-/* 分享管理 - 绿色 */
 #shareMgrBtn { color: var(--success-color); background-color: rgba(40, 167, 69, 0.1); }
 #shareMgrBtn:hover { background-color: var(--success-color); color: #fff; }
-
-/* 修改密码 - 橙色 */
 #changePasswordBtn { color: var(--orange-color); background-color: rgba(253, 126, 20, 0.1); }
 #changePasswordBtn:hover { background-color: var(--orange-color); color: #fff; }
-
-/* 回收站 - 红色 */
 #trashBtn { color: var(--danger-color); background-color: rgba(220, 53, 69, 0.1); }
 #trashBtn:hover { background-color: var(--danger-color); color: #fff; }
-
-/* 退出登录 - 深灰 */
 #logoutBtn { color: #6c757d; background-color: rgba(108, 117, 125, 0.1); }
 #logoutBtn:hover { background-color: #6c757d; color: #fff; }
-
 
 /* 回收站黄色横幅 */
 .trash-banner {
     background-color: #fff3cd; color: #856404; padding: 10px 20px;
     display: flex; justify-content: space-between; align-items: center;
     border-bottom: 1px solid #ffeeba; animation: slideDown 0.3s ease;
+    flex-wrap: wrap; gap: 10px;
 }
 .trash-actions { display: flex; gap: 10px; }
 @keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
 
-/* 工具栏区域 */
-.toolbar { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
-.left-tools { display: flex; gap: 10px; }
-.right-tools { display: flex; gap: 8px; }
+/* 工具栏区域 (Toolbar)
+   修复：增加 flex-wrap 和 gap，防止小屏幕挤压
+*/
+.toolbar { 
+    padding: 15px 20px; 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    flex-wrap: wrap; /* 允许换行 */
+    gap: 10px;       /* 换行后的间距 */
+}
+.left-tools { display: flex; gap: 10px; flex-wrap: wrap; }
+.right-tools { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* --- 工具栏右侧按钮专属配色 (新增) --- */
-/* 多选模式 - 蓝色 */
+/* --- 工具栏右侧按钮专属配色 --- */
 #multiSelectToggleBtn { color: var(--primary-color); border-color: var(--border-color); background: #fff; }
 #multiSelectToggleBtn:hover, #multiSelectToggleBtn.active { background-color: var(--primary-color); color: #fff; border-color: var(--primary-color); }
-
-/* 全选 - 青色 */
 #selectAllBtn { color: var(--teal-color); border-color: var(--border-color); background: #fff; }
 #selectAllBtn:hover { background-color: var(--teal-color); color: #fff; border-color: var(--teal-color); }
-
-/* 切换视图 - 紫色 */
 #view-switch-btn { color: var(--purple-color); border-color: var(--border-color); background: #fff; }
 #view-switch-btn:hover { background-color: var(--purple-color); color: #fff; border-color: var(--purple-color); }
-
-/* 刷新按钮 - 普通悬停变色 */
 .left-tools .btn:not(.primary-btn):hover { border-color: var(--primary-color); color: var(--primary-color); }
 
 
 /* 面包屑导航 */
-.breadcrumb-container { padding: 0 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.breadcrumb-container { padding: 0 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
 #breadcrumb { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; align-items: center; }
 #breadcrumb a { text-decoration: none; color: var(--text-secondary); font-size: 0.95rem; padding: 2px 5px; border-radius: 3px; }
 #breadcrumb a:hover { color: var(--primary-color); background: #e9ecef; }
@@ -248,13 +245,10 @@ body.auth-page {
     display: none; align-items: center; justify-content: center; font-size: 12px; color: var(--primary-color);
     z-index: 2;
 }
-
-/* 核心修改：在多选模式下，默认隐藏，只有 悬浮 或 被选中 时才显示 */
 .selection-mode-active .grid-item:hover .select-checkbox,
 .selection-mode-active .grid-item.selected .select-checkbox { 
     display: flex; 
 }
-
 .grid-item.selected .select-checkbox { background: var(--primary-color); border-color: var(--primary-color); color: #fff; }
 
 /* --- 列表视图 (List View) --- */
@@ -277,7 +271,7 @@ body.auth-page {
 .progress-track { flex: 1; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; }
 .progress-fill { height: 100%; background: var(--success-color); transition: width 0.3s; }
 
-/* --- 悬浮任务栏 (Upload/Move Task) --- */
+/* --- 悬浮任务栏 --- */
 .task-status-bar {
     position: fixed; bottom: 60px; right: 20px;
     background: #333; color: #fff; padding: 12px 25px;
@@ -326,33 +320,33 @@ body.auth-page {
 .no-preview { color: #666; }
 .upload-link-btn { display: inline-block; padding: 10px 20px; background: var(--primary-color); color: white; text-decoration: none; border-radius: 4px; margin-top: 20px; }
 
-/* =========================================
-   4. 编辑器样式 (Editor UI)
-   ========================================= */
-.editor-container {
-    display: flex; flex-direction: column; height: 100vh; background: #fff;
-}
-.editor-toolbar {
-    padding: 10px 20px; background: #f8f9fa; border-bottom: 1px solid var(--border-color); 
-    display: flex; justify-content: space-between; align-items: center;
-}
+/* --- 编辑器 --- */
+.editor-container { display: flex; flex-direction: column; height: 100vh; background: #fff; }
+.editor-toolbar { padding: 10px 20px; background: #f8f9fa; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
 .editor-toolbar h3 { margin: 0; font-size: 1rem; color: var(--text-main); }
 .editor-main { flex: 1; position: relative; overflow: hidden; }
-#editor { 
-    width: 100%; height: 100%; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; 
-    font-size: 14px; border: none; padding: 20px; resize: none; outline: none; line-height: 1.6;
-    background-color: #fff; color: #333;
-}
+#editor { width: 100%; height: 100%; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; border: none; padding: 20px; resize: none; outline: none; line-height: 1.6; background-color: #fff; color: #333; }
 
 /* =========================================
-   5. 响应式适配
+   5. 响应式适配 (核心修复)
    ========================================= */
 @media (max-width: 768px) {
     .search-box input { width: 150px; }
     .search-box input:focus { width: 200px; }
-    .brand span { display: none; } /* 可选: 隐藏品牌文字只留图标 */
-    .toolbar { flex-direction: column; gap: 10px; align-items: stretch; padding: 10px; }
-    .left-tools, .right-tools { justify-content: space-between; }
+    .brand span { display: none; }
+    
+    /* 修复工具栏在手机上的显示 */
+    .toolbar { 
+        flex-direction: column; /* 垂直排列 */
+        align-items: stretch;   /* 占满宽度 */
+        gap: 15px; 
+    }
+    
+    /* 修复：按钮组改为居中或自然排列，而非强制两端撑开 */
+    .left-tools, .right-tools { 
+        justify-content: center; 
+    }
+    
     .modal-content { width: 95%; margin: 20% auto; padding: 20px; }
     .auth-container { margin: 20px; width: auto; padding: 25px; }
     .task-status-bar { left: 10px; right: 10px; bottom: 50px; justify-content: space-between; }
