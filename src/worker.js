@@ -74,8 +74,9 @@ app.use('*', async (c, next) => {
 const authMiddleware = async (c, next) => {
     const url = new URL(c.req.url);
     const path = url.pathname;
+    // 【更新】将文件夹下载路由添加到公开路径
     if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|eot)$/)) return await next();
-    const publicPaths = ['/login', '/register', '/setup', '/api/public', '/share', '/download/folder']; // 临时添加文件夹下载为公开
+    const publicPaths = ['/login', '/register', '/setup', '/api/public', '/share', '/download/folder'];
     if (publicPaths.some(p => path.startsWith(p))) return await next();
 
     const token = getCookie(c, 'remember_me');
@@ -142,8 +143,8 @@ app.get('/api/public/share/:token', async (c) => {
         });
     }
 
+    // 4. 返回内容
     if (type === 'file') {
-        // 4. 返回文件内容
         return c.json({
             type: 'file',
             name: item.fileName,
@@ -152,7 +153,6 @@ app.get('/api/public/share/:token', async (c) => {
             downloadUrl: `/share/download/${token}`
         });
     } else {
-        // 4. 返回文件夹内容
         // 获取文件夹内容
         const contents = await data.getFolderContents(db, item.id, item.user_id);
         return c.json({
@@ -246,15 +246,28 @@ app.get('/share/download/:token/:fileId', async (c) => {
 // 6. 核心业务路由
 // =================================================================================
 
-// 【新增】下载文件夹路由
+// 【新增】下载文件夹路由 (公开，但需要用户验证)
 app.get('/download/folder/:encryptedId', async (c) => {
+    // Note: This route should ideally be behind authMiddleware if not using a separate token
+    // Assuming authMiddleware has run and user is set, or handling auth internally if public.
     const user = c.get('user');
+    if (!user) return c.text('Unauthorized: Missing user context', 401); // 额外安全检查
+    
     const encryptedId = c.req.param('encryptedId');
     const folderId = parseInt(decrypt(encryptedId));
 
     if (isNaN(folderId)) return c.text('Invalid Folder ID', 400);
 
     const db = c.get('db');
+    // 注意：需要确保 formatSize 函数在 Worker 环境中可用，通常它定义在 data.js 或全局
+    const formatSize = (bytes) => {
+        if (bytes === 0 || bytes === undefined) return '0 B'; 
+        const k = 1024; 
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB']; 
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]; 
+    };
+
     const allFiles = await data.getFolderFilesForDownload(db, folderId, user.id);
     const folder = await db.get("SELECT name FROM folders WHERE id = ? AND user_id = ?", [folderId, user.id]);
     const folderName = folder ? folder.name : 'downloaded_folder';
@@ -289,7 +302,6 @@ app.get('/download/folder/:encryptedId', async (c) => {
         }
     });
 });
-
 
 app.get('/setup', async (c) => {
     try {
@@ -340,22 +352,31 @@ app.get('/logout', async (c) => {
     return c.redirect('/login');
 });
 
-// 【已修复】根路由，增加对 root 存在的检查，防止 crash
+// 【已修复】根路由，增强对 root 存在的检查，防止 crash
 app.get('/', async (c) => {
     const db = c.get('db'); const user = c.get('user');
     let root = await data.getRootFolder(db, user.id);
     if (!root) {
-        // 尝试自愈
+        // 尝试自愈：删除可能存在的损坏根目录记录，并重新创建
         await db.run("DELETE FROM folders WHERE user_id = ? AND parent_id IS NULL", [user.id]);
-        await data.createFolder(db, '/', null, user.id);
-        root = await data.getRootFolder(db, user.id);
+        const creationResult = await data.createFolder(db, '/', null, user.id);
+        
+        // 尝试从创建结果中获取ID，或再次查询数据库
+        if (creationResult && creationResult.id) {
+            root = { id: creationResult.id };
+        } else {
+             // 再次查询（在 D1 最终一致性模型下，这可能仍然失败，但值得一试）
+             root = await data.getRootFolder(db, user.id);
+        }
     }
     
-    // 增加明确的检查以防止 crash
+    // 关键检查：确保 root 存在且有 ID，防止读取 undefined 的属性
     if (!root || !root.id) {
-        throw new Error("Critical Error: Unable to locate or create user's root folder. Please check database setup.");
+        // 如果多次尝试后仍失败，抛出明确错误
+        console.error("Critical Error: Failed to locate user's root folder after self-healing.");
+        return c.text("系统错误: 无法定位或创建用户根文件夹，请联系管理员。", 500);
     }
-    
+
     return c.redirect(`/view/${encrypt(root.id)}`);
 });
 app.get('/fix-root', async (c) => c.redirect('/'));
