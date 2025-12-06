@@ -815,3 +815,56 @@ export async function scanStorageAndImport(db, storage, userId, controller) {
         log(`掃描完成。新增導入 ${importedCount} 個文件。`);
     } catch (e) { log(`掃描過程發生錯誤: ${e.message}`); }
 }
+
+// =================================================================================
+// 13. 递归文件获取 (用于下载)
+// =================================================================================
+
+/**
+ * 递归获取文件夹下所有未删除的文件记录
+ * @param {Database} db 
+ * @param {number} folderId - 要下载的根文件夹 ID
+ * @param {number} userId 
+ * @returns {Promise<Array>}
+ */
+export async function getFolderFilesForDownload(db, folderId, userId) {
+    let allFiles = [];
+    // 存储 { id: folderId, path: 'Relative/Path' }
+    let foldersToProcess = [{ id: folderId, path: '' }]; 
+    const processedFolders = new Set();
+    
+    // 收集文件的最小必要字段，以便构建 ZIP 结构和下载
+    const FILE_SELECT_COLUMNS = `CAST(message_id AS TEXT) AS message_id, fileName, file_id, user_id, storage_type, mimetype, size, folder_id`; 
+
+    while (foldersToProcess.length > 0) {
+        const { id: currentId, path: currentPath } = foldersToProcess.shift();
+        
+        if (processedFolders.has(currentId)) continue;
+        processedFolders.add(currentId);
+
+        // 1. Fetch files in the current folder (only active ones)
+        const filesInFolder = await db.all(
+            `SELECT ${FILE_SELECT_COLUMNS} FROM files WHERE folder_id = ? AND user_id = ? AND deleted_at IS NULL`, 
+            [currentId, userId]
+        );
+
+        filesInFolder.forEach(file => {
+            // 添加相对路径信息
+            file.relativePath = currentPath ? `${currentPath}/${file.fileName}` : file.fileName;
+        });
+
+        allFiles.push(...filesInFolder);
+
+        // 2. Find subfolders (only active ones)
+        const subFolders = await db.all(
+            `SELECT id, name FROM folders WHERE parent_id = ? AND user_id = ? AND deleted_at IS NULL`, 
+            [currentId, userId]
+        );
+        
+        subFolders.forEach(f => {
+            const newPath = currentPath ? `${currentPath}/${f.name}` : f.name;
+            foldersToProcess.push({ id: f.id, path: newPath });
+        });
+    }
+    return allFiles;
+}
