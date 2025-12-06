@@ -1,3 +1,5 @@
+// public/manager.js
+
 // =================================================================================
 // 1. 全局工具函数 (无依赖，放在最外层)
 // =================================================================================
@@ -37,7 +39,7 @@ function formatSize(bytes) {
     if (bytes === 0 || bytes === undefined) return '0 B'; 
     const k = 1024; 
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB']; 
-    const i = Math.floor(Math.log(bytes) / Math.log(k)); 
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]; 
 }
 
@@ -343,6 +345,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 4. 其他逻辑函数
+
+    // [新增] 更新配额函数
+    async function updateQuota() {
+        try {
+            const res = await axios.get('/api/user/quota');
+            const { max, used } = res.data;
+            if (quotaUsedEl) quotaUsedEl.textContent = formatSize(used);
+            if (quotaMaxEl) quotaMaxEl.textContent = max == 0 ? '无限' : formatSize(max);
+            if (quotaBar) {
+                if (max > 0) {
+                    const percent = Math.min(100, (used / max) * 100);
+                    quotaBar.style.width = percent + '%';
+                } else {
+                    quotaBar.style.width = '0%'; // 无限容量时
+                }
+            }
+        } catch (e) {
+            console.error('更新配额失败:', e);
+        }
+    }
+
     function updateFolderSelectForUpload(folders) {
         if(!folderSelect) return;
         folderSelect.innerHTML = `<option value="${currentFolderId}">当前文件夹</option>`;
@@ -408,7 +431,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- 缺失函数补全 ---
     async function loadTrash() {
         isTrashMode = true;
         currentFolderId = null;
@@ -467,7 +489,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- 事件绑定区 (所有函数已就绪) ---
+    // --- 事件绑定区 ---
 
     // 背景右键
     const mainContent = document.querySelector('.main-content');
