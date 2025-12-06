@@ -11,7 +11,7 @@
 </head>
 <body>
     <div class="navbar">
-        <div class="brand"><i class="fas fa-cloud"></i> Network FileManager</div>
+        <div class="brand"><i class="fas fa-cloud"></i> 主页</div>
         <div class="search-box">
             <form id="searchForm">
                 <input type="text" id="searchInput" placeholder="搜索文件...">
@@ -103,6 +103,10 @@
         <div class="menu-item normal-mode-btn item-action" id="renameBtn"><i class="fas fa-signature"></i> 重命名</div>
         <div class="menu-item normal-mode-btn item-action" id="lockBtn"><i class="fas fa-lock"></i> 加密/解锁</div>
         <div class="menu-separator item-action"></div>
+        
+        <div class="menu-item item-action success-btn" id="restoreBtn" style="display:none;"><i class="fas fa-trash-restore"></i> 还原选中</div>
+        <div class="menu-item item-action text-danger" id="deleteForeverBtn" style="display:none;"><i class="fas fa-times"></i> 永久删除</div>
+        
         <div class="menu-item text-danger item-action" id="deleteBtn"><i class="fas fa-trash-alt"></i> 删除</div>
     </div>
 
