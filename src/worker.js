@@ -439,6 +439,37 @@ app.get('/download/proxy/:messageId', async (c) => {
     } catch(e) { return c.text(e.message, 500); }
 });
 
+// 获取文件缩略图 API
+app.get('/api/thumbnail/:messageId', async (c) => {
+    // 1. 鉴权
+    const user = c.get('user');
+    if (!user) return c.text('Unauthorized', 401);
+
+    // 2. 查询文件信息
+    const files = await data.getFilesByIds(c.get('db'), [c.req.param('messageId')], user.id);
+    if (!files.length) return c.text('File Not Found', 404);
+    const file = files[0];
+
+    // 3. 确定要下载的 ID (如果是 Telegram 且有缩略图，则使用缩略图 ID)
+    let targetFileId = file.file_id;
+    if (file.storage_type === 'telegram' && file.thumb_file_id) {
+        targetFileId = file.thumb_file_id;
+    }
+
+    // 4. 从存储后端获取流
+    try {
+        const { stream, contentType, headers } = await c.get('storage').download(targetFileId, user.id);
+        const h = new Headers(headers);
+        // 设置缓存控制，缩略图可以缓存较长时间
+        h.set('Cache-Control', 'public, max-age=31536000'); 
+        h.set('Content-Type', file.mimetype || contentType || 'application/octet-stream');
+        return new Response(stream, { headers: h });
+    } catch(e) { 
+        // 获取失败时返回 404，前端会显示默认图标
+        return c.text(e.message, 404); 
+    }
+});
+
 app.post('/api/move', async (c) => {
     const { files, folders, targetFolderId, conflictMode } = await c.req.json();
     const tid = parseInt(decrypt(targetFolderId));
