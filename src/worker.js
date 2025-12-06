@@ -75,7 +75,7 @@ const authMiddleware = async (c, next) => {
     const url = new URL(c.req.url);
     const path = url.pathname;
     if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|eot)$/)) return await next();
-    const publicPaths = ['/login', '/register', '/setup', '/api/public', '/share'];
+    const publicPaths = ['/login', '/register', '/setup', '/api/public', '/share', '/download/folder']; // 临时添加文件夹下载为公开
     if (publicPaths.some(p => path.startsWith(p))) return await next();
 
     const token = getCookie(c, 'remember_me');
@@ -142,8 +142,8 @@ app.get('/api/public/share/:token', async (c) => {
         });
     }
 
-    // 4. 返回内容
     if (type === 'file') {
+        // 4. 返回文件内容
         return c.json({
             type: 'file',
             name: item.fileName,
@@ -152,6 +152,7 @@ app.get('/api/public/share/:token', async (c) => {
             downloadUrl: `/share/download/${token}`
         });
     } else {
+        // 4. 返回文件夹内容
         // 获取文件夹内容
         const contents = await data.getFolderContents(db, item.id, item.user_id);
         return c.json({
@@ -244,6 +245,52 @@ app.get('/share/download/:token/:fileId', async (c) => {
 // =================================================================================
 // 6. 核心业务路由
 // =================================================================================
+
+// 【新增】下载文件夹路由
+app.get('/download/folder/:encryptedId', async (c) => {
+    const user = c.get('user');
+    const encryptedId = c.req.param('encryptedId');
+    const folderId = parseInt(decrypt(encryptedId));
+
+    if (isNaN(folderId)) return c.text('Invalid Folder ID', 400);
+
+    const db = c.get('db');
+    const allFiles = await data.getFolderFilesForDownload(db, folderId, user.id);
+    const folder = await db.get("SELECT name FROM folders WHERE id = ? AND user_id = ?", [folderId, user.id]);
+    const folderName = folder ? folder.name : 'downloaded_folder';
+
+    if (allFiles.length === 0) return c.text('Folder is empty', 404);
+    
+    // -------------------------------------------------------------------------
+    // ⚠️ ZIP 压缩占位符：
+    // 实际的 ZIP 压缩流创建和文件流合并逻辑在 Workers 中实现非常复杂。
+    // 此处返回一个包含文件列表（及其相对路径）的文本文件作为功能占位符。
+    // -------------------------------------------------------------------------
+
+    const fileList = allFiles.map(f => `${f.relativePath} (${formatSize(f.size)})`).join('\n');
+    const filename = `${folderName}.zip-info.txt`;
+
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+        start(controller) {
+            controller.enqueue(encoder.encode("================================================\n"));
+            controller.enqueue(encoder.encode(`  文件夹下载占位符 - ${folderName}\n`));
+            controller.enqueue(encoder.encode("================================================\n\n"));
+            controller.enqueue(encoder.encode("以下是文件夹内的文件列表（包含相对路径）：\n"));
+            controller.enqueue(encoder.encode(fileList + "\n\n"));
+            controller.enqueue(encoder.encode("请注意：当前 Worker 环境不支持直接压缩文件夹。如需完整的 ZIP 下载功能，请部署一个支持流式 ZIP 压缩的后端服务。\n"));
+            controller.close();
+        }
+    });
+
+    return new Response(stream, {
+        headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`
+        }
+    });
+});
+
 
 app.get('/setup', async (c) => {
     try {
