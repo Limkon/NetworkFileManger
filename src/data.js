@@ -22,7 +22,7 @@ export async function getUniqueName(db, folderId, originalName, userId, type) {
     const col = type === 'file' ? 'fileName' : 'name';
     const parentCol = type === 'file' ? 'folder_id' : 'parent_id';
     
-    // 修正: 檢查是否存在同名且未刪除的項目，使用 deleted_at IS NULL
+    // 檢查是否存在同名且未刪除的項目，使用 deleted_at IS NULL
     const exists = await db.get(
         `SELECT 1 as exists_flag FROM ${table} WHERE ${col} = ? AND ${parentCol} = ? AND user_id = ? AND deleted_at IS NULL`, 
         [originalName, folderId, userId]
@@ -217,13 +217,13 @@ export async function createFolder(db, name, parentId, userId) {
             const whereClause = parentId === null ? "parent_id IS NULL" : "parent_id = ?";
             const params = parentId === null ? [name, userId] : [name, parentId, userId];
             
-            // 修正 BUG: 1. 查找所有可能造成衝突的現有記錄（不限定是否已刪除）。
+            // 修正 BUG: 1. 查找所有可能造成衝突的現有記錄（不限定是否已刪除），獲取 deleted_at
             row = await db.get(`SELECT id, deleted_at FROM folders WHERE name = ? AND ${whereClause} AND user_id = ?`, params); 
             
             if (row) {
                 // 2. 檢查記錄是否已刪除 (deleted_at 不為 NULL 表示在回收站中)
                 if (row.deleted_at !== null) {
-                    // 是已刪除的文件夾，執行復原操作
+                    // 是已刪除的文件夾，執行復原操作：清除 deleted_at 並設置 is_deleted = 0
                     await db.run("UPDATE folders SET is_deleted = 0, deleted_at = NULL WHERE id = ?", [row.id]); 
                     return { success: true, id: row.id, restored: true };
                 } else {
@@ -231,7 +231,7 @@ export async function createFolder(db, name, parentId, userId) {
                     throw new Error('文件夾已存在');
                 }
             } 
-            // 如果 UNIQUE 衝突发生，但找不到记录（理论上不该发生），则抛出原始错误
+            // 如果 UNIQUE 衝突發生，但找不到記錄（理論上不該發生），則拋出原始錯誤
             throw err;
         }
         throw err;
@@ -547,13 +547,13 @@ export async function moveItems(db, storage, fileIds = [], folderIds = [], targe
 export async function renameFile(db, storage, messageId, newFileName, userId) {
     // 修正：messageId 是字符串
     const result = await db.run(`UPDATE files SET fileName = ? WHERE message_id = ? AND user_id = ?`, [newFileName, messageId, userId]);
-    // if (result.meta.changes === 0) throw new Error('文件未找到'); // 註釋掉，避免在重命名一個不存在的(已被刪除的)文件時拋出錯誤
+    // if (result.meta.changes === 0) throw new Error('文件未找到'); 
     return { success: true };
 }
 
 export async function renameFolder(db, storage, folderId, newFolderName, userId) {
     const result = await db.run(`UPDATE folders SET name = ? WHERE id = ? AND user_id = ?`, [newFolderName, folderId, userId]);
-    // if (result.meta.changes === 0) throw new Error('文件夾未找到'); // 註釋掉，避免在重命名一個不存在的(已被刪除的)文件夾時拋出錯誤
+    // if (result.meta.changes === 0) throw new Error('文件夾未找到'); 
     return { success: true };
 }
 
