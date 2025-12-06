@@ -74,10 +74,7 @@ app.use('*', async (c, next) => {
 const authMiddleware = async (c, next) => {
     const url = new URL(c.req.url);
     const path = url.pathname;
-    
     if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|eot)$/)) return await next();
-    
-    // 【修复 1】：将 /download/folder 从 publicPaths 中移除，强制执行身份验证
     const publicPaths = ['/login', '/register', '/setup', '/api/public', '/share'];
     if (publicPaths.some(p => path.startsWith(p))) return await next();
 
@@ -248,61 +245,6 @@ app.get('/share/download/:token/:fileId', async (c) => {
 // 6. 核心业务路由
 // =================================================================================
 
-// 【新增】下载文件夹路由 (现在受 authMiddleware 保护)
-app.get('/download/folder/:encryptedId', async (c) => {
-    // 【修复 2】：删除冗余的 !user 检查，因为 authMiddleware 已经确保了用户存在
-    const user = c.get('user'); 
-    
-    const encryptedId = c.req.param('encryptedId');
-    const folderId = parseInt(decrypt(encryptedId));
-
-    if (isNaN(folderId)) return c.text('Invalid Folder ID', 400);
-
-    const db = c.get('db');
-    // 注意：需要确保 formatSize 函数在 Worker 环境中可用，通常它定义在 data.js 或全局
-    const formatSize = (bytes) => {
-        if (bytes === 0 || bytes === undefined) return '0 B'; 
-        const k = 1024; 
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB']; 
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]; 
-    };
-
-    const allFiles = await data.getFolderFilesForDownload(db, folderId, user.id);
-    const folder = await db.get("SELECT name FROM folders WHERE id = ? AND user_id = ?", [folderId, user.id]);
-    const folderName = folder ? folder.name : 'downloaded_folder';
-
-    if (allFiles.length === 0) return c.text('Folder is empty', 404);
-    
-    // -------------------------------------------------------------------------
-    // ⚠️ ZIP 压缩占位符：
-    // 此处返回一个包含文件列表（及其相对路径）的文本文件作为功能占位符。
-    // -------------------------------------------------------------------------
-
-    const fileList = allFiles.map(f => `${f.relativePath} (${formatSize(f.size)})`).join('\n');
-    const filename = `${folderName}.zip-info.txt`;
-
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-        start(controller) {
-            controller.enqueue(encoder.encode("================================================\n"));
-            controller.enqueue(encoder.encode(`  文件夹下载占位符 - ${folderName}\n`));
-            controller.enqueue(encoder.encode("================================================\n\n"));
-            controller.enqueue(encoder.encode("以下是文件夹内的文件列表（包含相对路径）：\n"));
-            controller.enqueue(encoder.encode(fileList + "\n\n"));
-            controller.enqueue(encoder.encode("请注意：当前 Worker 环境不支持直接压缩文件夹。如需完整的 ZIP 下载功能，请部署一个支持流式 ZIP 压缩的后端服务。\n"));
-            controller.close();
-        }
-    });
-
-    return new Response(stream, {
-        headers: {
-            'Content-Type': 'text/plain; charset=utf-8',
-            'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`
-        }
-    });
-});
-
 app.get('/setup', async (c) => {
     try {
         await c.get('db').initDB();
@@ -352,31 +294,14 @@ app.get('/logout', async (c) => {
     return c.redirect('/login');
 });
 
-// 根路由，增强对 root 存在的检查，防止 crash
 app.get('/', async (c) => {
     const db = c.get('db'); const user = c.get('user');
     let root = await data.getRootFolder(db, user.id);
     if (!root) {
-        // 尝试自愈：删除可能存在的损坏根目录记录，并重新创建
         await db.run("DELETE FROM folders WHERE user_id = ? AND parent_id IS NULL", [user.id]);
-        const creationResult = await data.createFolder(db, '/', null, user.id);
-        
-        // 尝试从创建结果中获取ID，或再次查询数据库
-        if (creationResult && creationResult.id) {
-            root = { id: creationResult.id };
-        } else {
-             // 再次查询（在 D1 最终一致性模型下，这可能仍然失败，但值得一试）
-             root = await data.getRootFolder(db, user.id);
-        }
+        await data.createFolder(db, '/', null, user.id);
+        root = await data.getRootFolder(db, user.id);
     }
-    
-    // 关键检查：确保 root 存在且有 ID，防止读取 undefined 的属性
-    if (!root || !root.id) {
-        // 如果多次尝试后仍失败，抛出明确错误
-        console.error("Critical Error: Failed to locate user's root folder after self-healing.");
-        return c.text("系统错误: 无法定位或创建用户根文件夹，请联系管理员。", 500);
-    }
-
     return c.redirect(`/view/${encrypt(root.id)}`);
 });
 app.get('/fix-root', async (c) => c.redirect('/'));

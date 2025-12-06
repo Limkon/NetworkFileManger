@@ -271,8 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setDisplay('openBtn', isSingle && firstType === 'folder');
             setDisplay('previewBtn', isSingle && firstType === 'file');
             setDisplay('editBtn', isSingle && firstType === 'file'); 
-            // 【修改】允许下载文件和文件夹
-            setDisplay('downloadBtn', isSingle && (firstType === 'file' || firstType === 'folder'));
+            setDisplay('downloadBtn', isSingle && firstType === 'file');
             setDisplay('renameBtn', isSingle);
             setDisplay('shareBtn', isSingle);
             setDisplay('moveBtn', true); 
@@ -662,29 +661,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // 【修改】下载按钮逻辑：支持文件和文件夹
     if(downloadBtn) downloadBtn.addEventListener('click', () => {
         if (selectedItems.size !== 1) return;
-        const idStr = Array.from(selectedItems)[0]; 
-        const [type, id] = parseItemId(idStr);
-        const item = items.find(i => getItemId(i) === idStr); // 获取完整 item 对象，包含 encrypted_id
-        
-        if (!item) return alert('未找到该项目');
-
-        if (type === 'file') {
-            TaskManager.show('正在请求文件下载...', 'fas fa-download');
-            setTimeout(() => TaskManager.success('文件下载已开始'), 1500);
-            window.open(`/download/proxy/${id}`, '_blank');
-        } else if (type === 'folder') {
-            if (item.is_locked) return alert('加密文件夹暂不支持直接下载，请先解锁或分享后下载。');
-            
-            TaskManager.show('正在准备文件夹下载 (ZIP)...', 'fas fa-file-archive');
-            setTimeout(() => TaskManager.success('文件夹下载已开始'), 2000);
-            // Folder downloads use the encrypted ID and new endpoint
-            window.open(`/download/folder/${item.encrypted_id}`, '_blank');
-        } else {
-             return alert('无法下载该项目类型');
-        }
+        const idStr = Array.from(selectedItems)[0]; const [type, id] = parseItemId(idStr);
+        if (type !== 'file') return alert('只能下载文件');
+        TaskManager.show('正在请求下载...', 'fas fa-download');
+        setTimeout(() => TaskManager.success('下载已开始'), 1500);
+        window.open(`/download/proxy/${id}`, '_blank');
     });
     
     if(openBtn) openBtn.addEventListener('click', () => {
