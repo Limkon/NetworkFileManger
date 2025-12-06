@@ -224,6 +224,8 @@ export async function createFolder(db, name, parentId, userId) {
                 // 2. 檢查記錄是否已刪除 (deleted_at 不為 NULL 表示在回收站中)
                 if (row.deleted_at !== null) {
                     // 是已刪除的文件夾，執行復原操作：清除 deleted_at 並設置 is_deleted = 0
+                    // 注意：这里是新建文件夹逻辑，如果复原需要处理重命名冲突（createFolder一般作为新建，如果已存在回收站，直接复原可能覆盖，这里保持原逻辑，因为新建通常期望空文件夹）
+                    // 但为了安全，还是保留抛出错误或复原空文件夹
                     await db.run("UPDATE folders SET is_deleted = 0, deleted_at = NULL WHERE id = ?", [row.id]); 
                     return { success: true, id: row.id, restored: true };
                 } else {
@@ -411,11 +413,11 @@ export async function softDeleteItems(db, fileIds = [], folderIds = [], userId) 
 }
 
 export async function restoreItems(db, fileIds = [], folderIds = [], userId) {
-    // 初始化 Set 防止重複
+    // 初始化 Set 防止重複 (用於最終更新狀態)
     let targetFileIds = new Set(fileIds || []);
     let targetFolderIds = new Set(folderIds || []);
 
-    // 核心修正：递归查找被还原文件夹内的所有子文件和子文件夹，一同还原
+    // 1. 递归查找被还原文件夹内的所有子文件和子文件夹 (確保內容一同還原)
     if (folderIds && folderIds.length > 0) {
         for (const folderId of folderIds) {
             const data = await getFolderDeletionData(db, folderId, userId);
@@ -424,6 +426,35 @@ export async function restoreItems(db, fileIds = [], folderIds = [], userId) {
         }
     }
 
+    // 2. 冲突检测与自动重命名
+    // 只对用户直接选中的项目 (输入的 fileIds 和 folderIds) 进行冲突检查
+    // 因为子文件在父文件夹还原后，相对于父文件夹的路径是不变的，只要父文件夹解决了冲突，子文件通常安全。
+    
+    // (A) 检查并重命名文件夹
+    for (const id of (folderIds || [])) {
+        const folder = await db.get("SELECT id, name, parent_id FROM folders WHERE id = ? AND user_id = ?", [id, userId]);
+        if (folder) {
+            // getUniqueName 会检查 parent_id 下是否有同名且未删除(deleted_at IS NULL)的文件夹
+            const newName = await getUniqueName(db, folder.parent_id, folder.name, userId, 'folder');
+            if (newName !== folder.name) {
+                await db.run("UPDATE folders SET name = ? WHERE id = ? AND user_id = ?", [newName, id, userId]);
+            }
+        }
+    }
+
+    // (B) 检查并重命名文件
+    for (const id of (fileIds || [])) {
+        // 注意 message_id 是 string
+        const file = await db.get("SELECT message_id, fileName, folder_id FROM files WHERE message_id = ? AND user_id = ?", [id, userId]);
+        if (file) {
+            const newName = await getUniqueName(db, file.folder_id, file.fileName, userId, 'file');
+            if (newName !== file.fileName) {
+                await db.run("UPDATE files SET fileName = ? WHERE message_id = ? AND user_id = ?", [newName, id, userId]);
+            }
+        }
+    }
+
+    // 3. 执行批量状态更新 (is_deleted = 0)
     const finalFileIds = Array.from(targetFileIds);
     const finalFolderIds = Array.from(targetFolderIds);
 
