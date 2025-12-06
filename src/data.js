@@ -22,8 +22,7 @@ export async function getUniqueName(db, folderId, originalName, userId, type) {
     const col = type === 'file' ? 'fileName' : 'name';
     const parentCol = type === 'file' ? 'folder_id' : 'parent_id';
     
-    // 檢查是否存在同名且未刪除的項目
-    // 修正: 使用 deleted_at IS NULL 替代 (is_deleted = 0 OR is_deleted IS NULL)
+    // 修正: 檢查是否存在同名且未刪除的項目，使用 deleted_at IS NULL
     const exists = await db.get(
         `SELECT 1 as exists_flag FROM ${table} WHERE ${col} = ? AND ${parentCol} = ? AND user_id = ? AND deleted_at IS NULL`, 
         [originalName, folderId, userId]
@@ -217,10 +216,11 @@ export async function createFolder(db, name, parentId, userId) {
             let row;
             const whereClause = parentId === null ? "parent_id IS NULL" : "parent_id = ?";
             const params = parentId === null ? [name, userId] : [name, parentId, userId];
-            row = await db.get(`SELECT id, is_deleted FROM folders WHERE name = ? AND ${whereClause} AND user_id = ?`, params);
+            row = await db.get(`SELECT id, is_deleted, deleted_at FROM folders WHERE name = ? AND ${whereClause} AND user_id = ?`, params); // 获取 deleted_at
             if (row) {
-                if (row.is_deleted) {
-                    await db.run("UPDATE folders SET is_deleted = 0 WHERE id = ?", [row.id]);
+                // 修正: 檢查是否已刪除
+                if (row.deleted_at !== null) {
+                    await db.run("UPDATE folders SET is_deleted = 0, deleted_at = NULL WHERE id = ?", [row.id]); // 恢复文件夹
                     return { success: true, id: row.id, restored: true };
                 } else {
                     throw new Error('文件夾已存在');
