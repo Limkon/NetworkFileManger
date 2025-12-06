@@ -301,6 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const id = getItemId(item);
         if (!selectedItems.has(id)) {
+            // 如果右键点击了未选中的项目，且不是在多选模式或按住Ctrl，则只选中该项目
             if (!isMultiSelectMode && !e.ctrlKey) {
                 selectedItems.clear();
                 document.querySelectorAll('.selected').forEach(x => x.classList.remove('selected'));
@@ -311,6 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const listEl = document.querySelector(`.list-row[data-id="${id}"]`);
             if(listEl) listEl.classList.add('selected');
         }
+        // 如果右键点击了已选中的项目（例如全选后右键其中一个），则保留选区，直接显示菜单
         
         updateContextMenuState(true);
         showContextMenu(e.clientX, e.clientY);
@@ -333,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
         div.innerHTML = `
             <div class="item-icon"><i class="${iconClass}" style="color: ${iconColor};"></i>${item.is_locked ? '<i class="fas fa-lock lock-badge"></i>' : ''}</div>
             <div class="item-info"><h5 title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h5></div>
-            ${isMultiSelectMode ? '<div class="select-checkbox"><i class="fas fa-check"></i></div>' : ''}
+            <div class="select-checkbox"><i class="fas fa-check"></i></div>
         `;
         if (selectedItems.has(getItemId(item))) div.classList.add('selected');
         return div;
@@ -742,7 +744,8 @@ document.addEventListener('DOMContentLoaded', () => {
         isMultiSelectMode = !isMultiSelectMode;
         document.body.classList.toggle('selection-mode-active', isMultiSelectMode);
         document.getElementById('multiSelectToggleBtn').classList.toggle('active', isMultiSelectMode);
-        renderItems(items); if(contextMenu) contextMenu.style.display = 'none';
+        // 不再重新渲染 items，因为 DOM 已经有了 checkbox，CSS 会处理显示
+        if(contextMenu) contextMenu.style.display = 'none';
     });
     
     if(document.getElementById('selectAllBtn')) document.getElementById('selectAllBtn').addEventListener('click', () => {
