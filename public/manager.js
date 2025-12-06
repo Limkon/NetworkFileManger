@@ -147,6 +147,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const conflictOverwriteBtn = document.getElementById('conflictOverwriteBtn');
     const conflictSkipBtn = document.getElementById('conflictSkipBtn');
     const conflictCancelBtn = document.getElementById('conflictCancelBtn');
+    
+    // **新增右键菜单对回收站操作的引用**
+    const ctxRestoreBtn = document.getElementById('restoreBtn'); 
+    const ctxDeleteForeverBtn = document.getElementById('deleteForeverBtn'); 
+    // **新增结束**
 
     // --- 函数定义区 ---
 
@@ -219,7 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function showContextMenu(x, y) {
         if(!contextMenu) return;
         const menuWidth = 200; 
-        const menuHeight = isTrashMode ? 80 : 350; 
+        const menuHeight = isTrashMode ? 350 : 350; // 调整高度以适配新按钮
         if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
         if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
         
@@ -246,19 +251,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const globalActions = document.querySelectorAll('.global-action');
         const itemActions = document.querySelectorAll('.item-action');
 
+        // **修复/增强：回收站模式下的右键菜单状态控制**
         if (isTrashMode) {
             globalActions.forEach(el => el.style.display = 'none');
+            
+            // 隐藏普通模式操作
             itemActions.forEach(el => {
-                if (el.id === 'deleteBtn') {
-                    el.style.display = hasSelection ? 'flex' : 'none';
-                    el.innerHTML = '<i class="fas fa-trash-restore"></i> 还原 / 删除';
-                } else {
-                    el.style.display = 'none';
-                }
+                 el.style.display = 'none';
             });
+
+            // 显示回收站特有操作
+            if (ctxRestoreBtn) ctxRestoreBtn.style.display = hasSelection ? 'flex' : 'none';
+            if (ctxDeleteForeverBtn) ctxDeleteForeverBtn.style.display = hasSelection ? 'flex' : 'none';
+            // 确保 DeleteBtn 在回收站模式下隐藏，因为顶部面板已经有操作了
+            if (deleteBtn) deleteBtn.style.display = 'none';
+            
+            // 确保其他无关按钮隐藏
+            if (downloadBtn) downloadBtn.style.display = 'none';
+
             return;
         }
+        // **修复/增强：结束**
 
+        // 普通模式逻辑
         if (hasSelection) {
             globalActions.forEach(el => el.style.display = 'none');
             itemActions.forEach(el => el.style.display = 'flex');
@@ -271,17 +286,28 @@ document.addEventListener('DOMContentLoaded', () => {
             setDisplay('openBtn', isSingle && firstType === 'folder');
             setDisplay('previewBtn', isSingle && firstType === 'file');
             setDisplay('editBtn', isSingle && firstType === 'file'); 
+            
+            // 修复：确保单文件下载可见
             setDisplay('downloadBtn', isSingle && firstType === 'file');
+            
             setDisplay('renameBtn', isSingle);
             setDisplay('shareBtn', isSingle);
             setDisplay('moveBtn', true); 
             setDisplay('lockBtn', isSingle && firstType === 'folder');
+            
+            // 隐藏回收站操作
+            if (ctxRestoreBtn) ctxRestoreBtn.style.display = 'none';
+            if (ctxDeleteForeverBtn) ctxDeleteForeverBtn.style.display = 'none';
+            if (deleteBtn) deleteBtn.style.display = 'flex';
             
             const delBtn = document.getElementById('deleteBtn');
             if(delBtn) delBtn.innerHTML = '<i class="fas fa-trash-alt"></i> 删除';
         } else {
             globalActions.forEach(el => el.style.display = 'flex');
             itemActions.forEach(el => el.style.display = 'none');
+            // 确保回收站操作隐藏
+            if (ctxRestoreBtn) ctxRestoreBtn.style.display = 'none';
+            if (ctxDeleteForeverBtn) ctxDeleteForeverBtn.style.display = 'none';
         }
         
         const infoEl = document.getElementById('selectionInfo');
@@ -661,6 +687,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
+    // **修复开始：确保下载功能在右键菜单中工作**
     if(downloadBtn) downloadBtn.addEventListener('click', () => {
         if (selectedItems.size !== 1) return;
         const idStr = Array.from(selectedItems)[0]; const [type, id] = parseItemId(idStr);
@@ -669,6 +696,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => TaskManager.success('下载已开始'), 1500);
         window.open(`/download/proxy/${id}`, '_blank');
     });
+    // **修复结束**
     
     if(openBtn) openBtn.addEventListener('click', () => {
          if (selectedItems.size !== 1) return;
@@ -750,6 +778,11 @@ document.addEventListener('DOMContentLoaded', () => {
         else { items.forEach(item => selectedItems.add(getItemId(item))); document.querySelectorAll('.item-card, .list-item').forEach(el => el.classList.add('selected')); }
         updateContextMenuState(true); if(contextMenu) contextMenu.style.display = 'none';
     });
+    
+    // **新增右键菜单事件绑定**
+    if(ctxRestoreBtn) ctxRestoreBtn.addEventListener('click', () => restoreBtn.click());
+    if(ctxDeleteForeverBtn) ctxDeleteForeverBtn.addEventListener('click', () => deleteForeverBtn.click());
+    // **新增结束**
 
     if(shareBtn) {
         shareBtn.addEventListener('click', () => {
