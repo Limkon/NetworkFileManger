@@ -169,7 +169,7 @@ app.get('/', async (c) => {
 app.get('/fix-root', async (c) => c.redirect('/'));
 
 // =================================================================================
-// 6. 文件操作 API
+// 6. 文件操作 API (已优化 ID 为字符串处理)
 // =================================================================================
 
 app.get('/api/folder/:encryptedId', async (c) => {
@@ -218,6 +218,7 @@ app.post('/upload', async (c) => {
                 let existing = null;
                 
                 if(conflictMode === 'overwrite') {
+                    // 查询是否存在且未删除的文件
                     existing = await db.get("SELECT * FROM files WHERE fileName=? AND folder_id=? AND user_id=? AND (is_deleted=0 OR is_deleted IS NULL)", [file.name, folderId, user.id]);
                 } else {
                     finalName = await data.getUniqueName(db, folderId, file.name, user.id, 'file');
@@ -228,11 +229,13 @@ app.post('/upload', async (c) => {
                 
                 if(existing) {
                     console.log(`   [DB] 更新记录 ID: ${existing.message_id}`);
-                    await data.updateFile(db, BigInt(existing.message_id), {
+                    // 修正：直接传入 string 类型的 message_id
+                    await data.updateFile(db, existing.message_id, {
                         file_id: up.fileId, size: file.size, date: Date.now(), mimetype: file.type, thumb_file_id: up.thumbId || null
                     }, user.id);
                 } else {
-                    const mid = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random()*1000));
+                    // 生成 string 类型的 ID
+                    const mid = (BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random()*1000))).toString();
                     console.log(`   [DB] 插入新记录 ID: ${mid}`);
                     await data.addFile(db, {
                         message_id: mid, fileName: finalName, mimetype: file.type, size: file.size,
@@ -254,7 +257,8 @@ app.post('/upload', async (c) => {
 
 app.get('/download/proxy/:messageId', async (c) => {
     const user = c.get('user');
-    const files = await data.getFilesByIds(c.get('db'), [BigInt(c.req.param('messageId'))], user.id);
+    // 修正：ID 保持 String
+    const files = await data.getFilesByIds(c.get('db'), [c.req.param('messageId')], user.id);
     if (!files.length) return c.text('File Not Found', 404);
     try {
         const { stream, contentType, headers } = await c.get('storage').download(files[0].file_id, user.id);
@@ -270,7 +274,8 @@ app.post('/api/move', async (c) => {
     const tid = parseInt(decrypt(targetFolderId));
     if(!tid) return c.json({success:false},400);
     try {
-        await data.moveItems(c.get('db'), c.get('storage'), (files||[]).map(BigInt), (folders||[]).map(parseInt), tid, c.get('user').id, conflictMode);
+        // 修正：ID 保持 String 数组
+        await data.moveItems(c.get('db'), c.get('storage'), (files||[]), (folders||[]).map(parseInt), tid, c.get('user').id, conflictMode);
         return c.json({success:true});
     } catch(e) { return c.json({success:false, message:e.message}, 500); }
 });
@@ -285,7 +290,9 @@ app.post('/api/folder/create', async (c) => {
 
 app.post('/api/delete', async (c) => {
     const { files, folders, permanent } = await c.req.json();
-    const fIds = (files||[]).map(BigInt); const dIds = (folders||[]).map(parseInt);
+    // 修正：确保文件 ID 转为 String
+    const fIds = (files||[]).map(String); 
+    const dIds = (folders||[]).map(parseInt);
     if(permanent) await data.unifiedDelete(c.get('db'), c.get('storage'), null, null, c.get('user').id, fIds, dIds);
     else await data.softDeleteItems(c.get('db'), fIds, dIds, c.get('user').id);
     return c.json({success:true});
@@ -295,7 +302,8 @@ app.get('/api/trash', async (c) => c.json(await data.getTrashContents(c.get('db'
 
 app.post('/api/trash/restore', async (c) => {
     const { files, folders } = await c.req.json();
-    await data.restoreItems(c.get('db'), (files||[]).map(BigInt), (folders||[]).map(parseInt), c.get('user').id);
+    // 修正：确保文件 ID 转为 String
+    await data.restoreItems(c.get('db'), (files||[]).map(String), (folders||[]).map(parseInt), c.get('user').id);
     return c.json({ success: true });
 });
 
@@ -303,7 +311,8 @@ app.post('/api/trash/empty', async (c) => c.json(await data.emptyTrash(c.get('db
 
 app.post('/api/rename', async (c) => {
     const { type, id, name } = await c.req.json();
-    if(type==='file') await data.renameFile(c.get('db'), c.get('storage'), BigInt(id), name, c.get('user').id);
+    // 修正：文件 ID 使用 String
+    if(type==='file') await data.renameFile(c.get('db'), c.get('storage'), String(id), name, c.get('user').id);
     else await data.renameFolder(c.get('db'), c.get('storage'), parseInt(id), name, c.get('user').id);
     return c.json({success:true});
 });
@@ -353,7 +362,7 @@ app.get('/api/admin/users-with-quota', adminMiddleware, async (c) => {
     }
 });
 
-// 新增接口：获取当前存储模式
+// 获取当前存储模式
 app.get('/api/admin/storage-mode', adminMiddleware, async (c) => {
     const config = c.get('config');
     return c.json({ mode: config.storageMode });
