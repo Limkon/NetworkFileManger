@@ -216,16 +216,23 @@ export async function createFolder(db, name, parentId, userId) {
             let row;
             const whereClause = parentId === null ? "parent_id IS NULL" : "parent_id = ?";
             const params = parentId === null ? [name, userId] : [name, parentId, userId];
-            // 修正 BUG: 明確篩選出 deleted_at IS NOT NULL 的記錄，以確認是軟刪除的衝突
-            row = await db.get(`SELECT id, deleted_at FROM folders WHERE name = ? AND ${whereClause} AND user_id = ? AND deleted_at IS NOT NULL`, params); 
+            
+            // 修正 BUG: 1. 查找所有可能造成衝突的現有記錄（不限定是否已刪除）。
+            row = await db.get(`SELECT id, deleted_at FROM folders WHERE name = ? AND ${whereClause} AND user_id = ?`, params); 
+            
             if (row) {
-                // 如果找到已刪除的文件夾，則復原它
-                await db.run("UPDATE folders SET is_deleted = 0, deleted_at = NULL WHERE id = ?", [row.id]); 
-                return { success: true, id: row.id, restored: true };
-            } else {
-                // 如果沒有找到已刪除的文件夾，但 UNIQUE 約束仍然失敗，說明存在活躍的文件夾衝突
-                throw new Error('文件夾已存在');
-            }
+                // 2. 檢查記錄是否已刪除 (deleted_at 不為 NULL 表示在回收站中)
+                if (row.deleted_at !== null) {
+                    // 是已刪除的文件夾，執行復原操作
+                    await db.run("UPDATE folders SET is_deleted = 0, deleted_at = NULL WHERE id = ?", [row.id]); 
+                    return { success: true, id: row.id, restored: true };
+                } else {
+                    // 這是活躍的文件夾，拋出衝突錯誤
+                    throw new Error('文件夾已存在');
+                }
+            } 
+            // 如果 UNIQUE 衝突发生，但找不到记录（理论上不该发生），则抛出原始错误
+            throw err;
         }
         throw err;
     }
