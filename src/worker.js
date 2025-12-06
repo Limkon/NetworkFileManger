@@ -435,9 +435,27 @@ app.post('/api/delete', async (c) => {
 
 app.get('/api/trash', async (c) => c.json(await data.getTrashContents(c.get('db'), c.get('user').id)));
 
-app.post('/api/trash/restore', async (c) => {
+app.post('/api/trash/check', async (c) => {
     const { files, folders } = await c.req.json();
-    await data.restoreItems(c.get('db'), (files||[]).map(String), (folders||[]).map(parseInt), c.get('user').id);
+    const conflicts = await data.checkRestoreConflicts(
+        c.get('db'), 
+        (files||[]).map(String), 
+        (folders||[]).map(parseInt), 
+        c.get('user').id
+    );
+    return c.json({ conflicts });
+});
+
+app.post('/api/trash/restore', async (c) => {
+    const { files, folders, conflictMode } = await c.req.json();
+    await data.restoreItems(
+        c.get('db'), 
+        c.get('storage'), // 传入 storage 以支持 overwrite 时的删除
+        (files||[]).map(String), 
+        (folders||[]).map(parseInt), 
+        c.get('user').id,
+        conflictMode || 'rename'
+    );
     return c.json({ success: true });
 });
 
