@@ -74,9 +74,11 @@ app.use('*', async (c, next) => {
 const authMiddleware = async (c, next) => {
     const url = new URL(c.req.url);
     const path = url.pathname;
-    // 【更新】将文件夹下载路由添加到公开路径
+    
     if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|eot)$/)) return await next();
-    const publicPaths = ['/login', '/register', '/setup', '/api/public', '/share', '/download/folder'];
+    
+    // 【修复 1】：将 /download/folder 从 publicPaths 中移除，强制执行身份验证
+    const publicPaths = ['/login', '/register', '/setup', '/api/public', '/share'];
     if (publicPaths.some(p => path.startsWith(p))) return await next();
 
     const token = getCookie(c, 'remember_me');
@@ -246,12 +248,10 @@ app.get('/share/download/:token/:fileId', async (c) => {
 // 6. 核心业务路由
 // =================================================================================
 
-// 【新增】下载文件夹路由 (公开，但需要用户验证)
+// 【新增】下载文件夹路由 (现在受 authMiddleware 保护)
 app.get('/download/folder/:encryptedId', async (c) => {
-    // Note: This route should ideally be behind authMiddleware if not using a separate token
-    // Assuming authMiddleware has run and user is set, or handling auth internally if public.
-    const user = c.get('user');
-    if (!user) return c.text('Unauthorized: Missing user context', 401); // 额外安全检查
+    // 【修复 2】：删除冗余的 !user 检查，因为 authMiddleware 已经确保了用户存在
+    const user = c.get('user'); 
     
     const encryptedId = c.req.param('encryptedId');
     const folderId = parseInt(decrypt(encryptedId));
@@ -352,7 +352,7 @@ app.get('/logout', async (c) => {
     return c.redirect('/login');
 });
 
-// 【已修复】根路由，增强对 root 存在的检查，防止 crash
+// 根路由，增强对 root 存在的检查，防止 crash
 app.get('/', async (c) => {
     const db = c.get('db'); const user = c.get('user');
     let root = await data.getRootFolder(db, user.id);
