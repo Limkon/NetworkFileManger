@@ -14,7 +14,7 @@ function getIconClass(item) {
     if (['mp3','wav','ogg','flac'].includes(ext)) return 'fas fa-file-audio';
     if (['pdf'].includes(ext)) return 'fas fa-file-pdf';
     if (['zip','rar','7z','tar','gz'].includes(ext)) return 'fas fa-file-archive';
-    if (['txt','md','js','html','css','json','py','java','c','cpp','h','xml','log','ini','conf'].includes(ext)) return 'fas fa-file-alt'; // 增加 'h', 'conf'
+    if (['txt','md','js','html','css','json','py','java','c','cpp','h','xml','log','ini','conf'].includes(ext)) return 'fas fa-file-alt';
     return 'fas fa-file';
 }
 
@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let viewMode = localStorage.getItem('viewMode') || 'grid'; 
     let isTrashMode = false;
     
-    // 冲突解决状态 (用于上传队列)
+    // 冲突解决状态
     let conflictResolutionState = { applyToAll: false, choice: null };
     
     let selectedMoveTargetId = null;
@@ -148,6 +148,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const conflictSkipBtn = document.getElementById('conflictSkipBtn');
     const conflictCancelBtn = document.getElementById('conflictCancelBtn');
 
+    // 修改密码相关 DOM
+    const changePasswordModal = document.getElementById('changePasswordModal');
+    const changePasswordBtn = document.getElementById('changePasswordBtn');
+    const closeChangePasswordBtn = document.getElementById('closeChangePasswordBtn');
+    const submitChangePasswordBtn = document.getElementById('submitChangePasswordBtn');
+    const oldPasswordInput = document.getElementById('oldPasswordInput');
+    const newPasswordInput = document.getElementById('newPasswordInput');
+
     // --- 函数定义区 ---
 
     // 1. 任务管理器
@@ -191,7 +199,6 @@ document.addEventListener('DOMContentLoaded', () => {
             conflictMessage.textContent = message;
             conflictModal.style.display = 'block';
             
-            // 重置复选框
             if (applyToAllCheckbox) applyToAllCheckbox.checked = false;
 
             const cleanup = () => {
@@ -333,19 +340,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- 缩略图逻辑 ---
         let iconContent = `<i class="${iconClass}" style="color: ${iconColor};"></i>`;
         
-        // 仅在非回收站模式下显示缩略图
         if (!isTrashMode && item.type === 'file' && item.mimetype) {
             const thumbUrl = `/api/thumbnail/${item.message_id}`;
-            
             if (item.mimetype.startsWith('image/')) {
-                // 图片显示：object-fit: cover 保持正方形裁剪
                 iconContent = `<img src="${thumbUrl}" loading="lazy" alt="${escapeHtml(item.name)}" style="width:100%; height:100%; object-fit: cover; border-radius: 4px;" onerror="this.onerror=null; this.parentNode.innerHTML='<i class=\\'${iconClass}\\' style=\\'color: ${iconColor};\\'></i>'">`;
             } else if (item.mimetype.startsWith('video/')) {
-                // 视频显示：尝试加载第0.1秒作为封面 (#t=0.1)
                 iconContent = `<video src="${thumbUrl}#t=0.1" preload="metadata" muted style="width:100%; height:100%; object-fit: cover; border-radius: 4px;" onloadeddata="this.pause()" onerror="this.onerror=null; this.parentNode.innerHTML='<i class=\\'${iconClass}\\' style=\\'color: ${iconColor};\\'></i>'"></video>`;
             }
         }
-        // ----------------
 
         div.innerHTML = `
             <div class="item-icon">${iconContent}${item.is_locked ? '<i class="fas fa-lock lock-badge"></i>' : ''}</div>
@@ -612,16 +614,14 @@ document.addEventListener('DOMContentLoaded', () => {
             else folders.push(realId); 
         });
 
-        let conflictMode = 'rename'; // 默认策略
+        let conflictMode = 'rename'; 
 
         try {
-            // 1. 预检查：查询是否有文件名冲突
             TaskManager.show('正在检查冲突...', 'fas fa-spinner');
             const checkRes = await axios.post('/api/trash/check', { files, folders });
             const { conflicts } = checkRes.data;
 
             if (conflicts && conflicts.length > 0) {
-                // 2. 如果有冲突，显示弹窗让用户选择
                 const conflictNames = conflicts.slice(0, 3).join(', ');
                 const moreText = conflicts.length > 3 ? ` 等 ${conflicts.length} 个项目` : '';
                 const msg = `还原的目标位置已存在同名项目: "${conflictNames}"${moreText}。`;
@@ -635,7 +635,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 conflictMode = result.choice;
             }
 
-            // 3. 执行还原
             TaskManager.show('正在还原...', 'fas fa-trash-restore');
             await axios.post('/api/trash/restore', { 
                 files, 
@@ -687,7 +686,6 @@ document.addEventListener('DOMContentLoaded', () => {
         window.open(`/download/proxy/${id}`, '_blank');
     });
 
-    // 修复：添加 editBtn 的事件监听器
     if(editBtn) editBtn.addEventListener('click', async () => {
         if (selectedItems.size !== 1) return;
         const idStr = Array.from(selectedItems)[0]; 
@@ -696,7 +694,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (type !== 'file' || !item) return;
 
-        // 与 handleItemDblClick 使用相同的可编辑文件扩展名列表
         const editableExtensions = ['txt', 'md', 'js', 'html', 'css', 'json', 'xml', 'py', 'java', 'c', 'cpp', 'h', 'log', 'ini', 'conf'];
         const ext = item.name ? item.name.split('.').pop().toLowerCase() : '';
         
@@ -705,7 +702,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
              alert('此文件类型不支持在线编辑');
         }
-    }); // <-- 修复代码到此为止
+    });
 
     if(openBtn) openBtn.addEventListener('click', () => {
          if (selectedItems.size !== 1) return;
@@ -954,14 +951,12 @@ document.addEventListener('DOMContentLoaded', () => {
             confirmMoveBtn.textContent = '正在检查冲突...';
             confirmMoveBtn.disabled = true;
             
-            // 1. 获取目标文件夹内容进行比对 (验重)
             const targetRes = await axios.get(`/api/folder/${selectedMoveTargetId}?t=${Date.now()}`);
             const targetContents = targetRes.data.contents;
             
             const targetFileNames = new Set(targetContents.files.map(f => f.fileName));
             const targetFolderNames = new Set(targetContents.folders.map(f => f.name));
             
-            // 2. 筛选出冲突项
             const conflicts = moveItemNames.filter(item => {
                 if (item.type === 'file') {
                     return targetFileNames.has(item.name);
@@ -973,7 +968,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let conflictMode = 'rename'; 
             
             if (conflicts.length > 0) {
-                // 3. 如果有冲突，显示弹窗让用户选择
                 const conflictNames = conflicts.map(c => c.name).slice(0, 3).join(', ');
                 const moreText = conflicts.length > 3 ? ` 等 ${conflicts.length} 个项目` : '';
                 const msg = `目标位置已存在同名项目: "${conflictNames}"${moreText}。`;
@@ -989,7 +983,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 conflictMode = result.choice;
             }
 
-            // 4. 执行移动
             confirmMoveBtn.textContent = '移动中...';
             TaskManager.show('正在移动...', 'fas fa-arrows-alt'); 
             
@@ -1031,10 +1024,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 TaskManager.show(`创建目录: ${part}`, 'fas fa-folder-plus');
                 try {
-                    // 注意：这里的 parentId 需要是加密 ID
                     await axios.post('/api/folder/create', { name: part, parentId: currentId });
                     
-                    // 需要重新查询以获取新创建文件夹的加密 ID
                     const updatedContents = await getFolderContentsForUpload(currentId);
                     const newFolder = updatedContents.folders.find(f => f.name === part);
                     
@@ -1055,7 +1046,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const currentPath = path ? `${path}/${entry.name}` : entry.name;
                 let entries = [];
                 const readAllEntries = async () => {
-                    // 修复：需要循环读取所有目录项
                     return new Promise((resolve, reject) => {
                         dirReader.readEntries(async (results) => {
                             if (results.length === 0) resolve(entries);
@@ -1066,7 +1056,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 let allEntries = [];
                 try {
-                    // 必须先读取所有条目
                     allEntries = await new Promise((resolve, reject) => {
                          const entryList = [];
                          const reader = entry.createReader();
@@ -1082,7 +1071,7 @@ document.addEventListener('DOMContentLoaded', () => {
                          };
                          read();
                     });
-                } catch(e) { /* ignore read error and treat as empty directory */ }
+                } catch(e) { }
 
 
                 let files = [];
@@ -1123,7 +1112,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (queue.length === 0) return;
 
         if(uploadModal) {
-            // 关闭上传窗口，使用右下角任务栏显示进度
             uploadModal.style.display = 'none';
         }
         
@@ -1132,7 +1120,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         TaskManager.show('准备上传...', 'fas fa-cloud-upload-alt');
 
-        // 重置冲突解决状态
         conflictResolutionState.applyToAll = false;
         conflictResolutionState.choice = null;
 
@@ -1155,19 +1142,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (pathCache[relPath]) targetFolderId = pathCache[relPath];
                 else { targetFolderId = await ensureRemotePath(relPath, rootId); pathCache[relPath] = targetFolderId; }
 
-                // 新逻辑：先验重
                 let conflictMode = 'rename'; 
                 let shouldUpload = true;
 
                 try {
-                    // 发起后端检查
                     const checkRes = await axios.post('/api/file/check', {
                         folderId: targetFolderId, 
                         fileName: file.name
                     });
                     
                     if (checkRes.data.exists) {
-                         // 如果存在，处理冲突逻辑
                          if (conflictResolutionState.applyToAll && conflictResolutionState.choice) {
                             conflictMode = conflictResolutionState.choice;
                         } else {
@@ -1184,7 +1168,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } catch (checkErr) {
                     console.warn('验重请求失败，将尝试直接重命名上传:', checkErr);
-                    // 如果验重接口挂了，默认继续上传（后端默认是 rename）
                 }
 
                 if (shouldUpload) {
@@ -1200,14 +1183,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             loadedBytesGlobal += diff;
                             if (totalBytes > 0 && progressBar) {
                                 const percent = Math.min(100, Math.round((loadedBytesGlobal * 100) / totalBytes));
-                                // 仅更新悬浮窗进度
                                 TaskManager.update(percent, statusMsg); 
                             }
                         }
                     });
                     successCount++;
-                } else {
-                    // 跳过也视为已处理
                 }
             } catch (error) { failCount++; }
         }
@@ -1224,7 +1204,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     }
 
-    // 绑定上传相关事件
     if(document.getElementById('showUploadModalBtn')) {
         document.getElementById('showUploadModalBtn').addEventListener('click', () => {
             if(uploadModal) uploadModal.style.display = 'block';
@@ -1251,7 +1230,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 拖拽逻辑
     let dragCounter = 0;
     window.addEventListener('dragenter', (e) => { e.preventDefault(); dragCounter++; if(dropZoneOverlay) dropZoneOverlay.style.display = 'flex'; });
     window.addEventListener('dragleave', (e) => { e.preventDefault(); dragCounter--; if (dragCounter === 0 && dropZoneOverlay) dropZoneOverlay.style.display = 'none'; });
@@ -1282,6 +1260,49 @@ document.addEventListener('DOMContentLoaded', () => {
             itemListView.style.display = 'block';
             if(viewSwitchBtn) viewSwitchBtn.innerHTML = '<i class="fas fa-th-large"></i>';
         }
+    }
+
+    // --- 修改密码相关逻辑 (新增) ---
+    if (changePasswordBtn) {
+        changePasswordBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (changePasswordModal) {
+                changePasswordModal.style.display = 'block';
+                if (oldPasswordInput) oldPasswordInput.value = '';
+                if (newPasswordInput) newPasswordInput.value = '';
+            }
+        });
+    }
+
+    if (closeChangePasswordBtn) {
+        closeChangePasswordBtn.addEventListener('click', () => {
+            if (changePasswordModal) changePasswordModal.style.display = 'none';
+        });
+    }
+
+    if (submitChangePasswordBtn) {
+        submitChangePasswordBtn.addEventListener('click', async () => {
+            const oldPwd = oldPasswordInput ? oldPasswordInput.value : '';
+            const newPwd = newPasswordInput ? newPasswordInput.value : '';
+            if (!oldPwd || !newPwd) return alert('请输入旧密码和新密码');
+
+            submitChangePasswordBtn.disabled = true;
+            submitChangePasswordBtn.textContent = '提交中...';
+
+            try {
+                const res = await axios.post('/api/user/change-password', {
+                    oldPassword: oldPwd,
+                    newPassword: newPwd
+                });
+                alert('密码修改成功');
+                if (changePasswordModal) changePasswordModal.style.display = 'none';
+            } catch (e) {
+                alert('修改失败: ' + (e.response?.data?.message || e.message));
+            } finally {
+                submitChangePasswordBtn.disabled = false;
+                submitChangePasswordBtn.textContent = '确认修改';
+            }
+        });
     }
 
     // --- 初始化调用 (放在最后) ---
