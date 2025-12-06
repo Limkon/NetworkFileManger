@@ -546,13 +546,22 @@ export async function cancelShare(db, itemId, itemType, userId) {
 
 export async function getActiveShares(db, userId) {
     const now = Date.now();
-    // 增加 folder_id 查询
-    const files = await db.all(`SELECT ${SAFE_SELECT_ID_AS_TEXT}, fileName as name, 'file' as type, share_token, share_expires_at, folder_id as parent_id FROM files WHERE share_token IS NOT NULL AND (share_expires_at IS NULL OR share_expires_at > ?) AND user_id = ?`, [now, userId]);
-    // 增加 parent_id 查询
-    const folders = await db.all(`SELECT id, name, 'folder' as type, share_token, share_expires_at, parent_id FROM folders WHERE share_token IS NOT NULL AND (share_expires_at IS NULL OR share_expires_at > ?) AND user_id = ?`, [now, userId]);
+    // 核心變更：同時查詢 folder_id/parent_id 以便實現文件定位
+    const files = await db.all(
+        `SELECT ${SAFE_SELECT_ID_AS_TEXT}, fileName as name, 'file' as type, share_token, share_expires_at, folder_id as parent_id 
+         FROM files 
+         WHERE share_token IS NOT NULL AND (share_expires_at IS NULL OR share_expires_at > ?) AND user_id = ?`, 
+         [now, userId]
+    );
+    const folders = await db.all(
+        `SELECT id, name, 'folder' as type, share_token, share_expires_at, parent_id 
+         FROM folders 
+         WHERE share_token IS NOT NULL AND (share_expires_at IS NULL OR share_expires_at > ?) AND user_id = ?`, 
+         [now, userId]
+    );
     
     const results = [...files, ...folders];
-    // 加密 parent_id
+    // 對 parent_id 進行加密處理，供前端路由使用
     return results.map(item => {
         let pid = item.parent_id;
         return {
