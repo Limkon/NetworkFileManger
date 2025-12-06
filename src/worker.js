@@ -340,6 +340,39 @@ app.post('/api/file/check', async (c) => {
     }
 });
 
+app.post('/api/file/save', async (c) => {
+    try {
+        const { id, content } = await c.req.json();
+        const user = c.get('user');
+        const db = c.get('db');
+        const storage = c.get('storage');
+
+        // 1. 验证文件归属
+        const files = await data.getFilesByIds(db, [id], user.id);
+        if (!files.length) return c.json({ success: false, message: '文件不存在或无权访问' }, 404);
+        const fileInfo = files[0];
+
+        // 2. 准备新内容
+        const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
+        
+        // 3. 上传到存储后端 (覆盖旧文件)
+        // 注意：这里默认覆盖，不检查重名，因为是保存操作
+        const up = await storage.upload(blob, fileInfo.fileName, 'text/plain; charset=utf-8', user.id, fileInfo.folder_id);
+
+        // 4. 更新数据库 (大小、时间、可能的 file_id 变更)
+        await data.updateFile(db, id, {
+            file_id: up.fileId,
+            size: blob.size,
+            date: Date.now(),
+            thumb_file_id: up.thumbId || null // 更新缩略图ID（如果有）
+        }, user.id);
+
+        return c.json({ success: true });
+    } catch (e) {
+        return c.json({ success: false, message: e.message }, 500);
+    }
+});
+
 app.post('/upload', async (c) => {
     const db = c.get('db'); const storage = c.get('storage'); 
     const user = c.get('user'); const config = c.get('config');
