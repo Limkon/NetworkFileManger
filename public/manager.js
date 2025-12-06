@@ -330,8 +330,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const iconClass = getIconClass(item);
         const iconColor = item.type === 'folder' ? '#fbc02d' : '#007bff';
 
+        // --- 缩略图逻辑 ---
+        let iconContent = `<i class="${iconClass}" style="color: ${iconColor};"></i>`;
+        
+        // 仅在非回收站模式下显示缩略图
+        if (!isTrashMode && item.type === 'file' && item.mimetype) {
+            const thumbUrl = `/api/thumbnail/${item.message_id}`;
+            
+            if (item.mimetype.startsWith('image/')) {
+                // 图片显示：object-fit: cover 保持正方形裁剪
+                iconContent = `<img src="${thumbUrl}" loading="lazy" alt="${escapeHtml(item.name)}" style="width:100%; height:100%; object-fit: cover; border-radius: 4px;" onerror="this.onerror=null; this.parentNode.innerHTML='<i class=\\'${iconClass}\\' style=\\'color: ${iconColor};\\'></i>'">`;
+            } else if (item.mimetype.startsWith('video/')) {
+                // 视频显示：尝试加载第0.1秒作为封面 (#t=0.1)
+                iconContent = `<video src="${thumbUrl}#t=0.1" preload="metadata" muted style="width:100%; height:100%; object-fit: cover; border-radius: 4px;" onloadeddata="this.pause()" onerror="this.onerror=null; this.parentNode.innerHTML='<i class=\\'${iconClass}\\' style=\\'color: ${iconColor};\\'></i>'"></video>`;
+            }
+        }
+        // ----------------
+
         div.innerHTML = `
-            <div class="item-icon"><i class="${iconClass}" style="color: ${iconColor};"></i>${item.is_locked ? '<i class="fas fa-lock lock-badge"></i>' : ''}</div>
+            <div class="item-icon">${iconContent}${item.is_locked ? '<i class="fas fa-lock lock-badge"></i>' : ''}</div>
             <div class="item-info"><h5 title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h5></div>
             ${isMultiSelectMode ? '<div class="select-checkbox"><i class="fas fa-check"></i></div>' : ''}
         `;
@@ -992,7 +1009,6 @@ document.addEventListener('DOMContentLoaded', () => {
             confirmMoveBtn.disabled = false;
         }
     });
-// ...（接上一部分）
 
     // 上传功能
     async function getFolderContentsForUpload(encryptedId) {
