@@ -313,7 +313,7 @@ export async function searchItems(db, query, userId) {
 }
 
 // =================================================================================
-// 7. 回收站與刪除 (修正 ID 為字符串處理)
+// 7. 回收站與刪除 (修正 ID 為字符串處理，并增加递归处理)
 // =================================================================================
 
 export async function unifiedDelete(db, storage, itemId, itemType, userId, explicitFileIds = null, explicitFolderIds = null) {
@@ -381,30 +381,62 @@ export async function executeDeletion(db, fileIds, folderIds, userId) {
 
 export async function softDeleteItems(db, fileIds = [], folderIds = [], userId) {
     const now = Date.now();
-    if (fileIds.length > 0) {
-        // 修正：使用字符串數組
-        const place = fileIds.map(() => '?').join(',');
-        // 確保 message_id 匹配時考慮字符串類型
-        await db.run(`UPDATE files SET is_deleted = 1, deleted_at = ? WHERE message_id IN (${place}) AND user_id = ?`, [now, ...fileIds, userId]);
+    
+    // 初始化 Set 防止重複
+    let targetFileIds = new Set(fileIds || []);
+    let targetFolderIds = new Set(folderIds || []);
+
+    // 核心修正：递归查找被删除文件夹内的所有子文件和子文件夹
+    if (folderIds && folderIds.length > 0) {
+        for (const folderId of folderIds) {
+            const data = await getFolderDeletionData(db, folderId, userId);
+            data.files.forEach(f => targetFileIds.add(f.message_id));
+            data.folders.forEach(f => targetFolderIds.add(f.id));
+        }
     }
-    if (folderIds.length > 0) {
-        const place = folderIds.map(() => '?').join(',');
-        await db.run(`UPDATE folders SET is_deleted = 1, deleted_at = ? WHERE id IN (${place}) AND user_id = ?`, [now, ...folderIds, userId]);
+
+    const finalFileIds = Array.from(targetFileIds);
+    const finalFolderIds = Array.from(targetFolderIds);
+
+    if (finalFileIds.length > 0) {
+        // 修正：使用字符串數組
+        const place = finalFileIds.map(() => '?').join(',');
+        await db.run(`UPDATE files SET is_deleted = 1, deleted_at = ? WHERE message_id IN (${place}) AND user_id = ?`, [now, ...finalFileIds, userId]);
+    }
+    if (finalFolderIds.length > 0) {
+        const place = finalFolderIds.map(() => '?').join(',');
+        await db.run(`UPDATE folders SET is_deleted = 1, deleted_at = ? WHERE id IN (${place}) AND user_id = ?`, [now, ...finalFolderIds, userId]);
     }
     return { success: true };
 }
 
 export async function restoreItems(db, fileIds = [], folderIds = [], userId) {
-    if (fileIds.length > 0) {
-        // 修正：使用字符串數組
-        const place = fileIds.map(() => '?').join(',');
-        // 修正: 清除 deleted_at
-        await db.run(`UPDATE files SET is_deleted = 0, deleted_at = NULL WHERE message_id IN (${place}) AND user_id = ?`, [...fileIds, userId]);
+    // 初始化 Set 防止重複
+    let targetFileIds = new Set(fileIds || []);
+    let targetFolderIds = new Set(folderIds || []);
+
+    // 核心修正：递归查找被还原文件夹内的所有子文件和子文件夹，一同还原
+    if (folderIds && folderIds.length > 0) {
+        for (const folderId of folderIds) {
+            const data = await getFolderDeletionData(db, folderId, userId);
+            data.files.forEach(f => targetFileIds.add(f.message_id));
+            data.folders.forEach(f => targetFolderIds.add(f.id));
+        }
     }
-    if (folderIds.length > 0) {
-        const place = folderIds.map(() => '?').join(',');
+
+    const finalFileIds = Array.from(targetFileIds);
+    const finalFolderIds = Array.from(targetFolderIds);
+
+    if (finalFileIds.length > 0) {
+        // 修正：使用字符串數組
+        const place = finalFileIds.map(() => '?').join(',');
         // 修正: 清除 deleted_at
-        await db.run(`UPDATE folders SET is_deleted = 0, deleted_at = NULL WHERE id IN (${place}) AND user_id = ?`, [...folderIds, userId]);
+        await db.run(`UPDATE files SET is_deleted = 0, deleted_at = NULL WHERE message_id IN (${place}) AND user_id = ?`, [...finalFileIds, userId]);
+    }
+    if (finalFolderIds.length > 0) {
+        const place = finalFolderIds.map(() => '?').join(',');
+        // 修正: 清除 deleted_at
+        await db.run(`UPDATE folders SET is_deleted = 0, deleted_at = NULL WHERE id IN (${place}) AND user_id = ?`, [...finalFolderIds, userId]);
     }
     return { success: true };
 }
