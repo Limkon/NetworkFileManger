@@ -98,7 +98,7 @@ export async function deleteUser(db, userId) {
 
 export async function getUserQuota(db, userId) {
     const user = await db.get("SELECT max_storage_bytes FROM users WHERE id = ?", [userId]);
-    // 修正: 使用 deleted_at IS NULL 替代 (is_deleted = 0 OR is_deleted IS NULL)
+    // 修正: 使用 deleted_at IS NULL
     const usage = await db.get("SELECT SUM(size) as total_size FROM files WHERE user_id = ? AND deleted_at IS NULL", [userId]);
     return {
         max: user ? (user.max_storage_bytes || 1073741824) : 1073741824,
@@ -402,24 +402,30 @@ export async function softDeleteItems(db, fileIds = [], folderIds = [], userId) 
  * @returns {Promise<{success: boolean}>}
  */
 export async function restoreItems(db, fileIds = [], folderIds = [], userId) {
-    // 修正 BUG: 逐個更新文件，繞過 D1/SQLite 在 IN 批處理時可能出現的參數綁定錯誤
+    const promises = [];
+    
+    // 1. 文件恢復 (使用 Promise.all 確保批次處理穩定性)
     for (const fileId of fileIds) {
-        await db.run(
-            `UPDATE files SET is_deleted = 0, deleted_at = NULL WHERE message_id = ? AND user_id = ?`,
-            [fileId, userId]
+        promises.push(
+            db.run(
+                `UPDATE files SET is_deleted = 0, deleted_at = NULL WHERE message_id = ? AND user_id = ?`,
+                [fileId, userId]
+            )
         );
     }
     
-    // 逐個更新文件夾
+    // 2. 文件夾恢復 (使用 Promise.all 確保批次處理穩定性)
     for (const folderId of folderIds) {
-        await db.run(
-            `UPDATE folders SET is_deleted = 0, deleted_at = NULL WHERE id = ? AND user_id = ?`,
-            [folderId, userId]
+        promises.push(
+            db.run(
+                `UPDATE folders SET is_deleted = 0, deleted_at = NULL WHERE id = ? AND user_id = ?`,
+                [folderId, userId]
+            )
         );
     }
 
-    // 儘管 for 循環已經執行了更新，但我們需要確保目錄樹的父 ID 依然有效
-    // 由於我們只還原到頂層，這裡不需要額外的父 ID 檢查
+    // 執行所有更新並等待完成，這應該能解決批次還原的穩定性問題
+    await Promise.all(promises);
     
     return { success: true };
 }
