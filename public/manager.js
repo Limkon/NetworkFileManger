@@ -301,8 +301,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const id = getItemId(item);
         if (!selectedItems.has(id)) {
-            // 关键修复：如果右键点击了未选中的项目，且不是在多选模式或按住Ctrl，则只选中该项目
-            // 如果右键点击了已选中的项目，则不执行此块，保留选区
             if (!isMultiSelectMode && !e.ctrlKey) {
                 selectedItems.clear();
                 document.querySelectorAll('.selected').forEach(x => x.classList.remove('selected'));
@@ -332,11 +330,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const iconClass = getIconClass(item);
         const iconColor = item.type === 'folder' ? '#fbc02d' : '#007bff';
 
-        // 关键修复：select-checkbox 始终存在，显示与否由 CSS (.grid-item.selected .select-checkbox) 控制
         div.innerHTML = `
             <div class="item-icon"><i class="${iconClass}" style="color: ${iconColor};"></i>${item.is_locked ? '<i class="fas fa-lock lock-badge"></i>' : ''}</div>
             <div class="item-info"><h5 title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h5></div>
-            <div class="select-checkbox"><i class="fas fa-check"></i></div>
+            ${isMultiSelectMode ? '<div class="select-checkbox"><i class="fas fa-check"></i></div>' : ''}
         `;
         if (selectedItems.has(getItemId(item))) div.classList.add('selected');
         return div;
@@ -745,8 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isMultiSelectMode = !isMultiSelectMode;
         document.body.classList.toggle('selection-mode-active', isMultiSelectMode);
         document.getElementById('multiSelectToggleBtn').classList.toggle('active', isMultiSelectMode);
-        // 不再重新渲染 items，因为 DOM 已经有了 checkbox，CSS 会处理显示
-        if(contextMenu) contextMenu.style.display = 'none';
+        renderItems(items); if(contextMenu) contextMenu.style.display = 'none';
     });
     
     if(document.getElementById('selectAllBtn')) document.getElementById('selectAllBtn').addEventListener('click', () => {
