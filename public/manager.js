@@ -14,7 +14,7 @@ function getIconClass(item) {
     if (['mp3','wav','ogg','flac'].includes(ext)) return 'fas fa-file-audio';
     if (['pdf'].includes(ext)) return 'fas fa-file-pdf';
     if (['zip','rar','7z','tar','gz'].includes(ext)) return 'fas fa-file-archive';
-    if (['txt','md','js','html','css','json','py','java','c','cpp','h','xml','log','ini'].includes(ext)) return 'fas fa-file-alt';
+    if (['txt','md','js','html','css','json','py','java','c','cpp','h','xml','log','ini','conf'].includes(ext)) return 'fas fa-file-alt'; // 增加 'h', 'conf'
     return 'fas fa-file';
 }
 
@@ -515,7 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
             TaskManager.show('正在请求下载...', 'fas fa-download');
             setTimeout(() => TaskManager.success('下载已开始'), 2000);
             const ext = item.name ? item.name.split('.').pop().toLowerCase() : '';
-            if (['txt', 'md', 'js', 'html', 'css', 'json', 'xml', 'py', 'java', 'c', 'cpp', 'log', 'ini', 'conf'].includes(ext)) {
+            if (['txt', 'md', 'js', 'html', 'css', 'json', 'xml', 'py', 'java', 'c', 'cpp', 'h', 'log', 'ini', 'conf'].includes(ext)) {
                  window.open(`/editor.html?id=${item.message_id}&name=${encodeURIComponent(item.name)}`, '_blank');
             } else { window.open(`/download/proxy/${item.message_id}`, '_blank'); }
         }
@@ -669,7 +669,27 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => TaskManager.success('下载已开始'), 1500);
         window.open(`/download/proxy/${id}`, '_blank');
     });
-    
+
+    // 修复：添加 editBtn 的事件监听器
+    if(editBtn) editBtn.addEventListener('click', async () => {
+        if (selectedItems.size !== 1) return;
+        const idStr = Array.from(selectedItems)[0]; 
+        const [type, id] = parseItemId(idStr); 
+        const item = items.find(i => getItemId(i) === idStr);
+        
+        if (type !== 'file' || !item) return;
+
+        // 与 handleItemDblClick 使用相同的可编辑文件扩展名列表
+        const editableExtensions = ['txt', 'md', 'js', 'html', 'css', 'json', 'xml', 'py', 'java', 'c', 'cpp', 'h', 'log', 'ini', 'conf'];
+        const ext = item.name ? item.name.split('.').pop().toLowerCase() : '';
+        
+        if (editableExtensions.includes(ext)) {
+             window.open(`/editor.html?id=${item.message_id}&name=${encodeURIComponent(item.name)}`, '_blank');
+        } else {
+             alert('此文件类型不支持在线编辑');
+        }
+    }); // <-- 修复代码到此为止
+
     if(openBtn) openBtn.addEventListener('click', () => {
          if (selectedItems.size !== 1) return;
          const idStr = Array.from(selectedItems)[0]; const [type, id] = parseItemId(idStr);
@@ -690,7 +710,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let content = '';
         if (['jpg','jpeg','png','gif','webp','svg'].includes(ext)) content = `<img src="${downloadUrl}" style="max-width:100%; max-height:80vh;">`;
         else if (['mp4','webm'].includes(ext)) content = `<video src="${downloadUrl}" controls style="max-width:100%; max-height:80vh;"></video>`;
-        else if (['mp3','wav','ogg'].includes(ext)) content = `<audio src="${downloadUrl}" controls></audio>`;
+        else if (['mp3','wav','ogg','flac'].includes(ext)) content = `<audio src="${downloadUrl}" controls></audio>`;
         else if (['txt','md','json','js','css','html','xml','log'].includes(ext)) {
              try {
                  if(modalContent) modalContent.innerHTML = '<p>正在加载...</p>'; 
@@ -972,6 +992,7 @@ document.addEventListener('DOMContentLoaded', () => {
             confirmMoveBtn.disabled = false;
         }
     });
+// ...（接上一部分）
 
     // 上传功能
     async function getFolderContentsForUpload(encryptedId) {
@@ -994,9 +1015,13 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 TaskManager.show(`创建目录: ${part}`, 'fas fa-folder-plus');
                 try {
+                    // 注意：这里的 parentId 需要是加密 ID
                     await axios.post('/api/folder/create', { name: part, parentId: currentId });
+                    
+                    // 需要重新查询以获取新创建文件夹的加密 ID
                     const updatedContents = await getFolderContentsForUpload(currentId);
                     const newFolder = updatedContents.folders.find(f => f.name === part);
+                    
                     if (newFolder) currentId = newFolder.encrypted_id;
                     else throw new Error(`无法获取新创建目录 ID: ${part}`);
                 } catch (e) { throw e; }
@@ -1014,16 +1039,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 const currentPath = path ? `${path}/${entry.name}` : entry.name;
                 let entries = [];
                 const readAllEntries = async () => {
+                    // 修复：需要循环读取所有目录项
                     return new Promise((resolve, reject) => {
                         dirReader.readEntries(async (results) => {
                             if (results.length === 0) resolve(entries);
-                            else { entries = entries.concat(results); await readAllEntries(); resolve(entries); }
+                            else { entries = entries.concat(results); resolve(await readAllEntries()); }
                         }, reject);
                     });
                 };
-                await readAllEntries();
+                
+                let allEntries = [];
+                try {
+                    // 必须先读取所有条目
+                    allEntries = await new Promise((resolve, reject) => {
+                         const entryList = [];
+                         const reader = entry.createReader();
+                         const read = () => {
+                             reader.readEntries(results => {
+                                 if (!results.length) {
+                                     resolve(entryList);
+                                 } else {
+                                     entryList.push(...results);
+                                     read();
+                                 }
+                             }, reject);
+                         };
+                         read();
+                    });
+                } catch(e) { /* ignore read error and treat as empty directory */ }
+
+
                 let files = [];
-                for (const subEntry of entries) {
+                for (const subEntry of allEntries) {
                     const subFiles = await scanEntry(subEntry, currentPath);
                     files = files.concat(subFiles);
                 }
