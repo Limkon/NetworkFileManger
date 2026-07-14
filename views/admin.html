@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台</title>
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="/manager.css">
+    <style>
+        /* --- 核心布局：九宫格（3列响应式）样式 --- */
+        .settings-grid-area {
+            display: grid;
+            /* 设定最小宽度 300px，自动创建 3 列或更多列（九宫格效果），并确保响应式 */
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+            gap: 20px; /* 卡片间距 */
+        }
+
+        .setting-card {
+            position: relative;
+        }
+        
+        /* --- 修正按钮颜色和样式 --- */
+        /* 确保所有表格内的操作按钮都有样式，并强制文字颜色 */
+        .user-table .actions button,
+        .quota-table .actions button {
+            color: white; /* 确保文字是白色 */
+            font-weight: 500;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.2s;
+        }
+
+        /* 明确为不同操作按钮设定背景色 */
+        .change-pass-btn { 
+            background-color: #ffc107 !important; /* 黄色 (修改密码) */
+            color: #212529 !important; /* 强制黑色文字以确保高对比度 */
+        }
+        .delete-user-btn { 
+            background-color: #dc3545 !important; /* 红色 (删除) */
+        }
+        /* 确保 .edit-quota-btn (编辑配额) 默认颜色为蓝色 */
+        .edit-quota-btn {
+            background-color: #007bff !important; 
+        }
+
+        /* --- 内部表单布局优化 --- */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            align-items: flex-start;
+        }
+        
+        .form-grid input,
+        .form-grid select {
+            width: 100% !important;
+            box-sizing: border-box;
+            margin-top: 5px !important;
+        }
+
+        .form-grid button {
+            margin-top: 25px !important;
+            height: 42px; 
+            width: 100%;
+        }
+
+        .quota-edit-form {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: nowrap;
+        }
+        .quota-edit-form input {
+            width: 80px !important;
+            padding: 5px !important;
+            margin: 0 !important;
+            box-sizing: border-box;
+            height: 30px;
+        }
+        .quota-edit-form button {
+            height: 30px;
+            padding: 5px 10px;
+            margin: 0 !important;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="main-header">
+            <h1>管理后台</h1>
+            <a href="/" class="upload-link-btn"><i class="fas fa-arrow-left"></i> 返回文件管理器</a>
+        </header>
+
+        <div class="settings-grid-area" id="settings-grid-area"> 
+
+            <div class="setting-card">
+                <h2>高级功能</h2>
+                <a href="/scan" class="upload-link-btn" style="background-color: #6f42c1;">
+                    <i class="fas fa-search-plus"></i> 文件扫描与汇入
+                </a>
+                <p style="margin-top: 10px;">将伺服器上已存在但未被数据库追踪的文件扫描并汇入系统。</p>
+            </div>
+
+            <div class="setting-card">
+                <h2>储存设定</h2>
+                <p>目前储存模式: <b id="current-mode">加载中...</b> | 上传模式: <b id="current-upload-mode">加载中...</b></p>
+                <p>警告：切换储存模式不会迁移现有档案。切换后，旧模式下的档案将无法在管理器中存取。</p>
+                <hr>
+                <div class="form-grid">
+                    <div>
+                        <label for="storage-select" style="display:block;margin-bottom:5px;">储存后端：</label>
+                        <select id="storage-select">
+                            <option value="telegram">Telegram</option>
+                            <option value="local">本地服务器</option>
+                            <option value="webdav">WebDAV</option>
+                            <option value="s3">S3 存储 (兼容 AWS/MinIO)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="upload-mode-select" style="display:block;margin-bottom:5px;">上传模式：</label>
+                        <select id="upload-mode-select">
+                            <option value="stream">流式上传 (推荐, 极速)</option>
+                            <option value="buffer">缓冲上传 (稳定, 暂存磁盘)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button id="save-btn" style="margin-top: 25px !important;">储存所有设定</button>
+                    </div>
+                </div>
+                <p id="save-status" style="color: green; margin-top: 10px;"></p>
+            </div>
+
+            <div class="setting-card" id="s3-settings-card" style="display: none;">
+                <h2>S3 存储配置 (AWS/MinIO/兼容)</h2>
+                <p>此设定只有在储存模式设定为 "S3 存储" 时才会生效。</p>
+                <form id="s3-form" style="margin-top: 20px;">
+                    <div class="form-grid">
+                        <div>
+                            <label for="s3-endpoint">Endpoint URL (可选，用于 MinIO 等):</label>
+                            <input type="url" id="s3-endpoint" placeholder="例如: https://s3.example.com" value="">
+                        </div>
+                        <div>
+                            <label for="s3-region">Region (区域):</label>
+                            <input type="text" id="s3-region" placeholder="例如: ap-northeast-1" required>
+                        </div>
+                        <div>
+                            <label for="s3-bucket">Bucket Name (存储桶名称):</label>
+                            <input type="text" id="s3-bucket" placeholder="存储桶名称" required>
+                        </div>
+                    </div>
+                    <div class="form-grid" style="margin-top: 15px;">
+                        <div>
+                            <label for="s3-access-key">Access Key ID (访问密钥):</label>
+                            <input type="text" id="s3-access-key" placeholder="Access Key ID">
+                        </div>
+                        <div>
+                            <label for="s3-secret-key">Secret Access Key (秘密密钥):</label>
+                            <input type="password" id="s3-secret-key" placeholder="Secret Access Key (留空则不变更)">
+                        </div>
+                        <div>
+                           </div>
+                    </div>
+                    <div style="text-align: right; margin-top: 15px;">
+                        <button type="submit" id="save-s3-btn" class="upload-link-btn">储存 S3 配置</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="setting-card" id="webdav-settings-card" style="display: none;">
+                <h2>系统共用 WebDAV 设定</h2>
+                <p>此设定将应用于所有使用者。只有在储存模式设定为 "WebDAV" 时才会生效。</p>
+                
+                <div class="table-container">
+                    <table class="user-table" id="webdav-table">
+                        <thead>
+                            <tr>
+                                <th>URL</th>
+                                <th>使用者名称</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="webdav-table-body">
+                            </tbody>
+                    </table>
+                </div>
+
+                <h3 style="margin-top: 20px;">新增或编辑 WebDAV 设定</h3>
+                <form id="webdav-form">
+                    <input type="hidden" id="webdav-id">
+                    <div class="form-grid">
+                        <div>
+                            <label for="webdav-url">WebDAV URL:</label>
+                            <input type="url" id="webdav-url" placeholder="WebDAV URL" required>
+                        </div>
+                        <div>
+                            <label for="webdav-username">使用者名称:</label>
+                            <input type="text" id="webdav-username" placeholder="使用者名称" required>
+                        </div>
+                        <div>
+                            <label for="webdav-password">密码:</label>
+                            <input type="password" id="webdav-password" placeholder="密码 (留空则不变更)">
+                        </div>
+                        <button type="submit" id="save-webdav-btn" style="margin-top: 25px !important;">储存设定</button>
+                        <button type="button" id="clear-webdav-form-btn" style="background-color: #6c757d; margin-top: 25px !important;">清除表单</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="setting-card">
+                <h2>使用者配额管理</h2>
+                <p>设定普通使用者的最大储存空间（0 GB 表示无限，预设 1 GB）。</p>
+
+                <div class="table-container">
+                    <table class="user-table" id="quota-table">
+                        <thead>
+                            <tr>
+                                <th>使用者名称</th>
+                                <th>身份</th>
+                                <th>已用空间</th>
+                                <th>最大空间 (GB)</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="quota-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="setting-card">
+                <h2>使用者管理</h2>
+                <form id="add-user-form">
+                    <div class="form-grid">
+                        <div>
+                            <label for="new-username">新用户名:</label>
+                            <input type="text" id="new-username" placeholder="新用户名" required>
+                        </div>
+                        <div>
+                            <label for="new-password">新密码:</label>
+                            <input type="password" id="new-password" placeholder="新密码 (至少4位)" required>
+                        </div>
+                        <div>
+                            <button type="submit" style="margin-top: 25px !important;">新增使用者</button>
+                        </div>
+                    </div>
+                </form>
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>使用者名称</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="user-table-body">
+                    </tbody>
+                </table>
+            </div>
+
+        </div> </div>
+    <script src="/vendor/axios/axios.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // ... (省略未修改的 DOM 元素声明)
+            const currentModeEl = document.getElementById('current-mode');
+            const currentUploadModeEl = document.getElementById('current-upload-mode');
+            const storageSelect = document.getElementById('storage-select');
+            const uploadModeSelect = document.getElementById('upload-mode-select');
+            const saveBtn = document.getElementById('save-btn');
+            const saveStatus = document.getElementById('save-status');
+            const addUserForm = document.getElementById('add-user-form');
+            const newUsernameInput = document.getElementById('new-username');
+            const newPasswordInput = document.getElementById('new-password');
+            const userTableBody = document.getElementById('user-table-body');
+            const webdavSettingsCard = document.getElementById('webdav-settings-card');
+            
+            // WebDAV elements
+            const webdavTableBody = document.getElementById('webdav-table-body');
+            const webdavForm = document.getElementById('webdav-form');
+            const webdavIdInput = document.getElementById('webdav-id');
+            const webdavUrlInput = document.getElementById('webdav-url');
+            const webdavUsernameInput = document.getElementById('webdav-username');
+            const webdavPasswordInput = document.getElementById('webdav-password');
+            const saveWebdavBtn = document.getElementById('save-webdav-btn');
+            const clearWebdavFormBtn = document.getElementById('clear-webdav-form-btn');
+
+            // --- S3 新增元素 ---
+            const s3SettingsCard = document.getElementById('s3-settings-card');
+            const s3Form = document.getElementById('s3-form');
+            const s3EndpointInput = document.getElementById('s3-endpoint');
+            const s3RegionInput = document.getElementById('s3-region');
+            const s3BucketInput = document.getElementById('s3-bucket');
+            const s3AccessKeyInput = document.getElementById('s3-access-key');
+            const s3SecretKeyInput = document.getElementById('s3-secret-key');
+
+            // --- 配额管理 DOM 元素 (省略未修改的) ---
+            const quotaTableBody = document.getElementById('quota-table-body');
+            
+            // --- 字节格式化工具函数 (保留) ---
+            const formatBytes = (bytes, decimals = 2) => {
+                if (!bytes || bytes === 0) return '0 B';
+                const k = 1024;
+                const dm = decimals < 0 ? 0 : decimals;
+                const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+            };
+            
+            // --- GB和Bytes转换工具函数 (保留) ---
+            const bytesToGB = (bytes) => (bytes / 1073741824); // 1GB = 1073741824 Bytes
+            const GBToBytes = (gb) => Math.round(parseFloat(gb) * 1073741824);
+            const DEFAULT_MAX_GB = bytesToGB(1073741824).toFixed(2); 
+
+            async function loadCurrentSettings() {
+                try {
+                    const res = await axios.get('/api/admin/storage-mode');
+                    // 更新储存模式显示
+                    let modeText = '未知';
+                    switch (res.data.storageMode) {
+                        case 'local': modeText = '本地服务器'; break;
+                        case 'telegram': modeText = 'Telegram'; break;
+                        case 'webdav': modeText = 'WebDAV'; break;
+                        case 's3': modeText = 'S3 存储'; break; // 新增
+                    }
+                    currentModeEl.textContent = modeText;
+                    storageSelect.value = res.data.storageMode;
+                    
+                    // 更新上传模式显示
+                    let uploadModeText = '未知';
+                    switch (res.data.uploadMode) {
+                        case 'stream': uploadModeText = '流式 (Stream)'; break;
+                        case 'buffer': uploadModeText = '缓冲 (Buffer)'; break;
+                        default: uploadModeText = '流式 (Stream)';
+                    }
+                    currentUploadModeEl.textContent = uploadModeText;
+                    uploadModeSelect.value = res.data.uploadMode || 'stream';
+
+                    // 控制配置卡片显示
+                    webdavSettingsCard.style.display = 'none';
+                    s3SettingsCard.style.display = 'none'; 
+                    
+                    if(res.data.storageMode === 'webdav') {
+                        webdavSettingsCard.style.display = 'block';
+                        loadWebdavSettings();
+                    } else if (res.data.storageMode === 's3') {
+                        s3SettingsCard.style.display = 'block';
+                        loadS3Settings(); // 新增
+                    }
+                } catch (error) {
+                    currentModeEl.textContent = '读取失败';
+                    currentUploadModeEl.textContent = '读取失败';
+                }
+            }
+
+            saveBtn.addEventListener('click', async () => {
+                const newStorageMode = storageSelect.value;
+                const newUploadMode = uploadModeSelect.value;
+                
+                let modeText = storageSelect.options[storageSelect.selectedIndex].text;
+                
+                if (!confirm(`确定要更新储存设定吗？\n储存后端: ${modeText}\n上传模式: ${uploadModeSelect.options[uploadModeSelect.selectedIndex].text}`)) {
+                    return;
+                }
+                
+                try {
+                    // 分别储存，或者由后端提供一个统一的接口。这里我们分别调用。
+                    await axios.post('/api/admin/storage-mode', { mode: newStorageMode });
+                    await axios.post('/api/admin/upload-mode', { mode: newUploadMode });
+                    
+                    saveStatus.textContent = '设定已全部储存！';
+                    setTimeout(() => saveStatus.textContent = '', 3000);
+                    loadCurrentSettings();
+                } catch (error) {
+                    saveStatus.textContent = '储存失败！' + (error.response?.data?.message || error.message);
+                }
+            });
+
+            // --- WebDAV 配置函数 (保留) ---
+            function clearWebdavForm() {
+                webdavForm.reset();
+                webdavIdInput.value = '';
+                saveWebdavBtn.textContent = '储存设定';
+                webdavPasswordInput.placeholder = "密码 (留空则不变更)";
+            }
+
+            async function loadWebdavSettings() {
+                try {
+                    const res = await axios.get('/api/admin/webdav');
+                    const configs = res.data;
+                    webdavTableBody.innerHTML = '';
+                    if (configs.length === 0) {
+                         webdavTableBody.innerHTML = '<tr><td colspan="3" style="text-align: center;">尚未设定 WebDAV。</td></tr>';
+                    } else {
+                        configs.forEach(config => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${config.url}</td>
+                                <td>${config.username}</td>
+                                <td class="actions">
+                                    <button class="edit-webdav-btn" data-id="${config.id}">编辑</button>
+                                    <button class="delete-webdav-btn" data-id="${config.id}" style="background-color: #dc3545;">删除</button>
+                                </td>
+                            `;
+                            webdavTableBody.appendChild(row);
+                        });
+                    }
+                } catch (error) {
+                     webdavTableBody.innerHTML = '<tr><td colspan="3" style="text-align: center;">加载 WebDAV 设定失败。</td></tr>';
+                }
+            }
+            
+            clearWebdavFormBtn.addEventListener('click', clearWebdavForm);
+
+            webdavForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const id = webdavIdInput.value;
+                const url = webdavUrlInput.value;
+                const username = webdavUsernameInput.value;
+                const password = webdavPasswordInput.value;
+
+                try {
+                    const payload = { url, username, password };
+                    if (id) payload.id = id;
+                    
+                    // 如果密码为空，不发送 password 字段，让后端保留旧密码
+                    if (password.trim() === '') {
+                        delete payload.password;
+                    }
+
+                    await axios.post('/api/admin/webdav', payload);
+                    alert('WebDAV 设定已储存!');
+                    clearWebdavForm();
+                    loadWebdavSettings();
+                } catch (error) {
+                    alert('储存失败: ' + (error.response?.data?.message || '服务器错误'));
+                }
+            });
+            
+            webdavTableBody.addEventListener('click', async (e) => {
+                const target = e.target;
+                const id = target.dataset.id;
+
+                if (target.classList.contains('edit-webdav-btn')) {
+                     const res = await axios.get('/api/admin/webdav');
+                     const config = res.data.find(c => String(c.id) === id);
+                     if (config) {
+                         webdavIdInput.value = config.id;
+                         webdavUrlInput.value = config.url;
+                         webdavUsernameInput.value = config.username;
+                         webdavPasswordInput.value = ''; // Don't show old password
+                         webdavPasswordInput.placeholder = "已设定（留空则不变更）";
+                         saveWebdavBtn.textContent = '更新设定';
+                     }
+                }
+
+                if (target.classList.contains('delete-webdav-btn')) {
+                    if (confirm('确定要删除此 WebDAV 设定吗？')) {
+                        try {
+                            await axios.delete(`/api/admin/webdav/${id}`);
+                            alert('设定已删除。');
+                            loadWebdavSettings();
+                        } catch (error) {
+                            alert('删除失败: ' + (error.response?.data?.message || '服务器错误'));
+                        }
+                    }
+                }
+            });
+            
+            // --- 新增 S3 配置函数 ---
+            async function loadS3Settings() {
+                try {
+                    const res = await axios.get('/api/admin/s3');
+                    const config = res.data.s3 || {};
+                    // 注意：Endpoint 可选，其他必填
+                    s3EndpointInput.value = config.endpoint || '';
+                    s3RegionInput.value = config.region || '';
+                    s3BucketInput.value = config.bucket || '';
+                    s3AccessKeyInput.value = config.accessKeyId || '';
+                    s3SecretKeyInput.value = ''; // 总是清空密码输入框
+                    s3SecretKeyInput.placeholder = config.secretAccessKey ? '已设定（留空则不变更）' : 'Secret Access Key';
+                } catch (error) {
+                    console.error('加载 S3 配置失败:', error);
+                    // 仅在明确的服务器错误时显示弹窗
+                    if (error.response && error.response.status !== 401) {
+                         alert('加载 S3 配置失败: ' + (error.response?.data?.message || '服务器错误'));
+                    }
+                }
+            }
+
+            s3Form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const payload = {
+                    endpoint: s3EndpointInput.value.trim(),
+                    region: s3RegionInput.value.trim(),
+                    bucket: s3BucketInput.value.trim(),
+                    accessKeyId: s3AccessKeyInput.value.trim(),
+                    secretAccessKey: s3SecretKeyInput.value // 仅在有值时传递
+                };
+                
+                if (payload.secretAccessKey === '') {
+                    delete payload.secretAccessKey; // 不传递空字符串，让后端保留旧值
+                }
+                if (payload.endpoint === '') {
+                     delete payload.endpoint; // 不传递空字符串
+                }
+
+
+                try {
+                    const res = await axios.post('/api/admin/s3', payload);
+                    if (res.data.success) {
+                        alert('S3 配置已储存!');
+                        loadS3Settings(); // 重新加载以更新显示并清空密码输入框
+                    } else {
+                        alert('储存失败: ' + res.data.message);
+                    }
+                } catch (error) {
+                    alert('储存失败: ' + (error.response?.data?.message || '服务器错误'));
+                }
+            });
+            
+            // --- 储存模式切换事件 (更新) ---
+            storageSelect.addEventListener('change', () => {
+                const mode = storageSelect.value;
+                webdavSettingsCard.style.display = 'none';
+                s3SettingsCard.style.display = 'none'; 
+                
+                if (mode === 'webdav') {
+                    webdavSettingsCard.style.display = 'block';
+                    loadWebdavSettings();
+                } else if (mode === 's3') {
+                    s3SettingsCard.style.display = 'block';
+                    loadS3Settings();
+                }
+            });
+            
+            // --- 用户管理和配额函数 (保留未修改的) ---
+            async function loadUsers() {
+                try {
+                    // 1. 加载用户管理列表 (只显示普通用户)
+                    const resUsers = await axios.get('/api/admin/users');
+                    userTableBody.innerHTML = '';
+                    resUsers.data.forEach(user => {
+                        const row = `
+                            <tr>
+                                <td>${user.username}</td>
+                                <td class="actions">
+                                    <button class="change-pass-btn" data-userid="${user.id}" data-username="${user.username}">修改密码</button>
+                                    <button class="delete-user-btn" data-userid="${user.id}" data-username="${user.username}">删除</button>
+                                </td>
+                            </tr>
+                        `;
+                        userTableBody.innerHTML += row;
+                    });
+
+                    // 2. 加载用户配额管理列表 (所有用户及其配额)
+                    const resQuota = await axios.get('/api/admin/users-with-quota');
+                    quotaTableBody.innerHTML = '';
+
+                    resQuota.data.users.forEach(user => {
+                        const isSystemAdmin = user.is_admin === 1;
+                        const used = formatBytes(user.used_storage_bytes);
+                        const maxBytes = user.max_storage_bytes;
+                        const maxGBDisplay = maxBytes === 0 ? '无限' : bytesToGB(maxBytes).toFixed(2);
+                        
+                        let row = document.createElement('tr');
+                        row.dataset.userId = user.id;
+
+                        if (isSystemAdmin) {
+                            row.innerHTML = `
+                                <td>${user.username}</td>
+                                <td><span style="color:#dc3545; font-weight:bold;">管理员</span></td>
+                                <td>${used}</td>
+                                <td>无限</td>
+                                <td>—</td>
+                            `;
+                        } else {
+                            // 普通用户可编辑配额
+                            row.innerHTML = `
+                                <td>${user.username}</td>
+                                <td>普通用户</td>
+                                <td>${used}</td>
+                                <td data-max-bytes="${maxBytes}">
+                                    <span class="max-quota-display">${maxBytes === 0 ? '无限' : maxGBDisplay + ' GB'}</span>
+                                    <div class="quota-edit-form" style="display:none; align-items:center;">
+                                        <input type="number" step="0.01" min="0" value="${maxBytes === 0 ? 0 : maxGBDisplay}" class="quota-input" data-default-gb="${DEFAULT_MAX_GB}"> GB
+                                        <button class="save-quota-btn upload-link-btn" style="background-color: #28a745; padding: 5px 10px; margin: 0 5px; font-size: 12px; height: 30px;"><i class="fas fa-save"></i></button>
+                                        <button class="cancel-quota-btn upload-link-btn" style="background-color: #6c757d; padding: 5px 10px; font-size: 12px; height: 30px;">取消</button>
+                                    </div>
+                                </td>
+                                <td class="actions">
+                                    <button class="edit-quota-btn upload-link-btn" style="background-color: #007bff; padding: 5px 10px; font-size: 12px; height: 30px;"><i class="fas fa-pen"></i> 编辑配额</button>
+                                </td>
+                            `;
+                        }
+                        quotaTableBody.appendChild(row);
+                    });
+                } catch (error) {
+                    console.error("加载用户或配额失败:", error);
+                    userTableBody.innerHTML = '<tr><td colspan="2">加载使用者失败</td></tr>';
+                    quotaTableBody.innerHTML = '<tr><td colspan="5">加载配额列表失败</td></tr>';
+                }
+            }
+
+            addUserForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const username = newUsernameInput.value.trim();
+                const password = newPasswordInput.value.trim();
+                if (!username || !password) return;
+
+                try {
+                    await axios.post('/api/admin/add-user', { username, password });
+                    newUsernameInput.value = '';
+                    newPasswordInput.value = '';
+                    alert('使用者新增成功！');
+                    loadUsers();
+                } catch (error) {
+                    alert('新增失败：' + (error.response?.data?.message || '服务器错误'));
+                }
+            });
+
+            userTableBody.addEventListener('click', async (e) => {
+                const target = e.target;
+                const userId = target.dataset.userid;
+                const username = target.dataset.username;
+
+                if (target.classList.contains('change-pass-btn')) {
+                    const newPassword = prompt(`请为使用者 "${username}" 输入新密码：`);
+                    if (newPassword && newPassword.length >= 4) {
+                        try {
+                            await axios.post('/api/admin/change-password', { userId, newPassword });
+                            alert(`使用者 "${username}" 的密码已更新。`);
+                        } catch (error) {
+                            alert('密码更新失败：' + (error.response?.data?.message || '服务器错误'));
+                        }
+                    } else if (newPassword) {
+                        alert('密码长度至少需要 4 个字元。');
+                    }
+                }
+
+                if (target.classList.contains('delete-user-btn')) {
+                    if (confirm(`确定要删除使用者 "${username}" 吗？\n此操作将会删除该使用者的所有档案和资料夾，且无法复原！`)) {
+                        try {
+                            await axios.post('/api/admin/delete-user', { userId });
+                            alert(`使用者 "${username}" 已被删除。`);
+                            loadUsers();
+                        } catch (error) {
+                             alert('删除失败：' + (error.response?.data?.message || '服务器错误'));
+                        }
+                    }
+                }
+            });
+
+            // --- 配额表操作事件 (保留) ---
+            quotaTableBody.addEventListener('click', async (e) => {
+                const target = e.target.closest('button');
+                if (!target) return;
+
+                const row = target.closest('tr');
+                if (!row) return;
+                
+                const userId = row.dataset.userId;
+                const quotaCell = row.querySelector('td[data-max-bytes]'); 
+                const displayEl = quotaCell.querySelector('.max-quota-display');
+                const editForm = quotaCell.querySelector('.quota-edit-form');
+                const editBtn = row.querySelector('.edit-quota-btn');
+                const inputEl = quotaCell.querySelector('.quota-input');
+
+                // 编辑按钮点击事件
+                if (target.classList.contains('edit-quota-btn')) {
+                    if (displayEl && editForm && inputEl && editBtn) {
+                        displayEl.style.display = 'none';
+                        editForm.style.display = 'flex'; 
+                        editBtn.style.display = 'none';
+                    }
+                }
+
+                // 取消按钮点击事件
+                if (target.classList.contains('cancel-quota-btn')) {
+                    if (displayEl && editForm && editBtn) {
+                        displayEl.style.display = 'inline';
+                        editForm.style.display = 'none';
+                        editBtn.style.display = 'block';
+                    }
+                }
+                
+                // 保存按钮点击事件
+                if (target.classList.contains('save-quota-btn')) {
+                    const newGB = inputEl.value.trim();
+
+                    if (isNaN(parseFloat(newGB)) || parseFloat(newGB) < 0) {
+                        alert('请输入一个有效的数字 (>= 0)');
+                        return;
+                    }
+                    
+                    const newMaxBytes = GBToBytes(newGB);
+                    // 尝试从已用空间单元格中提取字节数
+                    const usedText = row.querySelector('td:nth-child(3)').textContent;
+                    // 使用正则从 "10 MB" 格式中提取数字部分
+                    const usedMatch = usedText.match(/(\d+(\.\d+)?)\s*([A-Z]+)/);
+                    let currentUsedBytes = 0;
+                    if(usedMatch) {
+                        const num = parseFloat(usedMatch[1]);
+                        const unit = usedMatch[3];
+                        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                        const k = 1024;
+                        const index = sizes.indexOf(unit);
+                        if(index > 0) {
+                            currentUsedBytes = Math.round(num * Math.pow(k, index));
+                        } else if (index === 0) {
+                            currentUsedBytes = num;
+                        }
+                    }
+
+                    if (newMaxBytes !== 0 && newMaxBytes < currentUsedBytes) {
+                        const usedDisplay = formatBytes(currentUsedBytes);
+                        alert(`新配额不能低于当前已用空间 (${usedDisplay})！`);
+                        return;
+                    }
+
+                    let confirmationMessage = newMaxBytes === 0
+                        ? "确定要设置此用户最大空间为 无限 吗？"
+                        : `确定要设置此用户最大空间为 ${formatBytes(newMaxBytes)} 吗？`;
+                    
+                    if (!confirm(confirmationMessage)) return;
+
+                    try {
+                        const response = await axios.post('/api/admin/set-quota', { 
+                            userId, 
+                            maxBytes: newMaxBytes 
+                        });
+                        if (response.data.success) {
+                            alert('配额更新成功！');
+                            loadUsers(); // 重新加载列表以更新显示
+                        } else {
+                            alert('配额更新失败：' + response.data.message);
+                        }
+                    } catch (error) {
+                        alert('配额更新失败：' + (error.response?.data?.message || '服务器错误'));
+                    }
+                }
+            });
+
+
+            loadUsers();
+            loadCurrentSettings();
+        });
+    </script>
+</body>
+</html>
+
